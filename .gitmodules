@@ -1,12 +1,6 @@
-[submodule "belle-sip"]
-	path = belle-sip
-	url = https://gitlab.linphone.org/BC/public/belle-sip.git
 [submodule "cmake-builder"]
 	path = cmake-builder
 	url = https://gitlab.linphone.org/BC/public/linphone-cmake-builder.git
-[submodule "linphone"]
-	path = linphone
-	url = https://gitlab.linphone.org/BC/public/linphone.git
 [submodule "bcg729"]
 	path = bcg729
 	url = https://gitlab.linphone.org/BC/public/bcg729.git
