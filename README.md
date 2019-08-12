@@ -1,3 +1,9 @@
+# IOS Build instructions #
+## mkdir build && cd build ##
+## cmake .. -DLINPHONESDK_PLATFORM=IOS -DENABLE_VIDEO=0 -DENABLE_LIME=0 -DENABLE_LIME_X3DH=0 -DENABLE_G729=1 ##
+## cmake --build . --parallel 4 ##
+
+
 # linphone-sdk
 
 Meta repository holding all the dependencies to build a full Linphone SDK.
