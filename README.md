@@ -1,7 +1,18 @@
 # IOS Build instructions #
-## mkdir build && cd build ##
-## cmake .. -DLINPHONESDK_PLATFORM=IOS -DENABLE_VIDEO=0 -DENABLE_LIME=0 -DENABLE_LIME_X3DH=0 -DENABLE_G729=1 ##
-## cmake --build . --parallel 4 ##
+
+mkdir build && cd build
+cmake .. -DLINPHONESDK_PLATFORM=IOS -DENABLE_VIDEO=0 -DENABLE_LIME=0 -DENABLE_LIME_X3DH=0 -DENABLE_G729=1
+cmake --build . --parallel 4
+
+
+# Android Build instructions #
+export ANDROID_HOME=/Users/chrisaaker/Library/Android/sdk/
+export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools
+export ANDROID_NDK_HOME="/Users/chrisaaker/Library/Android/sdk/ndk/19.2.5345600"
+mkdir build && cd build
+cmake .. -DLINPHONESDK_PLATFORM=Android -DENABLE_VIDEO=0 -DENABLE_LIME=0 -DENABLE_LIME_X3DH=0 -DENABLE_G729=1
+make
+
 
 
 # linphone-sdk
@@ -38,8 +49,8 @@ In addition to the common components listed above, these components must be inst
 Visual Studio must also be properly configured with addons. Under "Tools"->"Obtain tools and features", make sure that the following components are installed:
  - Tasks: Select Windows Universal Platform development, Desktop C++ Development, .NET Development
  - Individual component: Windows 8.1 SDK
-	
-Finally add your user `bin` directory and `C:\Mingw\bin` to the PATH environement variable from windows advanced settings. 
+
+Finally add your user `bin` directory and `C:\Mingw\bin` to the PATH environement variable from windows advanced settings.
 
 ## Building and customizing the SDK
 
@@ -50,8 +61,8 @@ The steps to build the SDK are:
  2. Execute CMake to configure the project:
  `cmake ..`
  3. Build the SDK:
- `cmake --build . ` 
- or 
+ `cmake --build . `
+ or
  `cmake --build . --parallel <number of jobs>` (which is faster).
 
 You can pass some options to CMake at the second step to configure the SDK as you want.
