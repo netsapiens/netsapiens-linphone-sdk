@@ -1,7 +1,19 @@
 # IOS Build instructions #
 
+git clone https://github.com/netsapiens/netsapiens-linphone-sdk.git --recursive
+
+Double check Xcode path
+
+xcode-select -p
+
+Select Xcode path
+
+sudo xcode-select -s /Applications/Xcode\ [version].app/Contents/Developer
+
 mkdir build && cd build
+
 cmake .. -DLINPHONESDK_PLATFORM=IOS -DENABLE_VIDEO=0 -DENABLE_LIME=0 -DENABLE_LIME_X3DH=0 -DENABLE_G729=1
+
 cmake --build . --parallel 4
 
 
