@@ -3,9 +3,11 @@
 git clone https://github.com/netsapiens/netsapiens-linphone-sdk.git --recursive
 
 Double check Xcode path
+
 xcode-select -p
 
 Select Xcode path
+
 sudo xcode-select -s /Applications/Xcode\ [version].app/Contents/Developer
 
 mkdir build && cd build
