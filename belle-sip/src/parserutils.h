@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #ifndef belle_sip_parserutils_h
 #define belle_sip_parserutils_h
@@ -41,7 +42,6 @@ static BELLESIP_INLINE int belle_sip_strcasecmp(const char*a, const char* b) {
 BELLESIP_EXPORT belle_sip_header_t* belle_sip_header_get_next(const belle_sip_header_t* headers);
 BELLESIP_EXPORT void belle_sip_header_set_next(belle_sip_header_t* header,belle_sip_header_t* next);
 
-BELLESIP_EXPORT char* belle_sip_to_unescaped_string(const char* buff);
 belle_sip_param_pair_t* belle_sip_param_pair_new(const char* name,const char* value);
 char* _belle_sip_str_dup_and_unquote_string(const char* quoted_string);
 

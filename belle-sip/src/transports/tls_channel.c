@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "belle_sip_internal.h"
 #include "stream_channel.h"
@@ -529,7 +530,7 @@ static int tls_process_handshake(belle_sip_channel_t *obj){
 	}
 
 	if (err==0){
-		belle_sip_source_set_timeout((belle_sip_source_t*)obj,-1);
+		belle_sip_source_set_timeout_int64((belle_sip_source_t*)obj,-1);
 		belle_sip_channel_set_ready(obj,(struct sockaddr*)&channel->ss,channel->socklen);
 	}else if (err==BCTBX_ERROR_NET_WANT_READ || err==BCTBX_ERROR_NET_WANT_WRITE){
 		belle_sip_message("Channel [%p]: SSL handshake in progress...",obj);
@@ -603,7 +604,7 @@ static int tls_process_data(belle_sip_channel_t *obj,unsigned int revents){
 
 			channel->socket_connected=1;
 			belle_sip_source_set_events((belle_sip_source_t*)channel,BELLE_SIP_EVENT_READ|BELLE_SIP_EVENT_ERROR);
-			belle_sip_source_set_timeout((belle_sip_source_t*)obj,belle_sip_stack_get_transport_timeout(obj->stack));
+			belle_sip_source_set_timeout_int64((belle_sip_source_t*)obj,belle_sip_stack_get_transport_timeout(obj->stack));
 			if (obj->stack->http_proxy_host) {
 				belle_sip_message("Channel [%p]: Connected at TCP level, now doing http proxy connect",obj);
 				if (tls_process_http_connect(channel)) goto process_error;
@@ -653,10 +654,11 @@ static int tls_process_data(belle_sip_channel_t *obj,unsigned int revents){
 				belle_sip_warning("channel [%p]: unexpected event [%i] during TLS handshake.",obj,revents);
 			}
 		}
-	} else if ( obj->state == BELLE_SIP_CHANNEL_READY) {
+	} else if (obj->state == BELLE_SIP_CHANNEL_READY || obj->state == BELLE_SIP_CHANNEL_RES_IN_PROGRESS) {
+		/* Because of DNS TTL timeout, the channel may enter the RES_IN_PROGRESS state temporarily while being connected.*/
 		return belle_sip_channel_process_data(obj,revents);
 	} else {
-		belle_sip_error("Unexpected event [%i], for channel [%p]",revents,channel);
+		belle_sip_error("Unexpected event [%i], for channel [%p] in state [%s]", revents, channel, belle_sip_channel_state_to_string(obj->state));
 		channel_set_state(obj,BELLE_SIP_CHANNEL_ERROR);
 		return BELLE_SIP_STOP;
 	}

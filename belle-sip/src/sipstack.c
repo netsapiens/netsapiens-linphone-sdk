@@ -1,23 +1,45 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "belle_sip_internal.h"
 #include "listeningpoint_internal.h"
+
+static int belle_sip_well_known_port = 5060;
+static int belle_sip_well_known_port_tls = 5061;
+
+int belle_sip_stack_get_well_known_port(){
+	return belle_sip_well_known_port;
+}
+
+void belle_sip_stack_set_well_known_port(int value){
+	bctbx_message("belle_sip_stack_set_well_know_port() : set to [%i]", value);
+	belle_sip_well_known_port = value;
+}
+
+int belle_sip_stack_get_well_known_port_tls(){
+	return belle_sip_well_known_port_tls;
+}
+
+void belle_sip_stack_set_well_known_port_tls(int value){
+	bctbx_message("belle_sip_stack_set_well_know_port_tls() : set to [%i]", value);
+	belle_sip_well_known_port_tls = value;
+}
 
 belle_sip_hop_t* belle_sip_hop_new(const char* transport, const char *cname, const char* host,int port) {
 	belle_sip_hop_t* hop = belle_sip_object_new(belle_sip_hop_t);
@@ -60,12 +82,12 @@ belle_sip_hop_t* belle_sip_hop_new_from_generic_uri(const belle_generic_uri_t *u
 	int well_known_port=0;
 	const char *cname=NULL;
 	host = belle_sip_parameters_get_parameter(BELLE_SIP_PARAMETERS(uri),"maddr");
-	
+
 	if (!host)
 		host = belle_generic_uri_get_host(uri);
 	else
 		cname=belle_generic_uri_get_host(uri);
-	
+
 	if (strcasecmp(scheme,"http")==0) {
 		transport="TCP";
 		well_known_port=80;
@@ -135,6 +157,7 @@ belle_sip_stack_t * belle_sip_stack_new(const char *properties){
 	stack->dns_srv_enabled=TRUE;
 	stack->dns_search_enabled=TRUE;
 	stack->inactive_transport_timeout=3600; /*one hour*/
+	stack->unreliable_transport_timeout = 120;
 	return stack;
 }
 
@@ -299,6 +322,14 @@ void belle_sip_stack_set_inactive_transport_timeout(belle_sip_stack_t *stack, in
 	stack->inactive_transport_timeout=seconds;
 }
 
+void belle_sip_stack_set_unreliable_connection_timeout(belle_sip_stack_t *stack, int seconds){
+	stack->unreliable_transport_timeout = seconds;
+}
+
+int belle_sip_stack_get_unreliable_connection_timeout(const belle_sip_stack_t *stack){
+	return stack->unreliable_transport_timeout;
+}
+
 void belle_sip_stack_set_default_dscp(belle_sip_stack_t *stack, int dscp){
 	stack->dscp=dscp;
 }
@@ -336,4 +367,3 @@ int belle_sip_stack_reconnect_to_primary_asap_enabled(const belle_sip_stack_t *s
 void belle_sip_stack_set_client_bind_port(belle_sip_stack_t *stack, int port){
 	stack->test_bind_port = port;
 }
-

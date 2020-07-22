@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "belle_sip_internal.h"
 #include "bctoolbox/vfs.h"
@@ -429,6 +430,84 @@ belle_sip_memory_body_handler_t *belle_sip_memory_body_handler_new_copy_from_buf
 }
 
 /*
+ * Buffer manager, used for buffering user or file body handler
+ */
+typedef struct belle_sip_body_handler_buffer {
+	size_t size; /**< the maximum buffer size + 1, if != 0, all received chunks are modified to have a size which is 0 mod (buffer_size) */
+	size_t index; /**< amount of data currently stored in buffer */
+	uint8_t *data; /**< data stored from previous chunk */
+	off_t next_offset; /**< store the next offset value */
+} belle_sip_body_handler_buffer_t;
+
+/**
+ * Clone a belle_sip_body_handler_buffer_t structure
+ */
+static void belle_sip_body_handler_buffer_clone(belle_sip_body_handler_buffer_t *dst, const belle_sip_body_handler_buffer_t *src) {
+	dst->size=src->size;
+	dst->index=src->index;
+	dst->next_offset=src->next_offset;
+	if (src->data != NULL) {
+		dst->data=(uint8_t *)belle_sip_malloc(src->size);
+		memcpy(dst->data, src->data, src->size);
+	} else {
+		dst->data=NULL;
+	}
+}
+
+/*
+ * Buffer the received data if needed
+ * if buffer.size is not 0, reorganise the incoming data to deliver chunk of which size is 0 mod buffer.size
+ *
+ * @param[in/out] 	buffer	holds buffer and indexes
+ * @param[in/out] 	offset	points at the end of processed data
+ * @param[in]		input	points to the incoming data
+ * @param[out		output	points to the data affected by the buffering
+ * @param[in/out]	size of the incoming buffer and of the outgoing one
+ * @param[out]		free_output_flag	set to TRUE if the caller must free the output buffer after usage
+ */
+static void belle_sip_buffering_recv(belle_sip_body_handler_buffer_t *buffer, off_t *offset, uint8_t *input, uint8_t **output, size_t *size, bool_t *free_output_flag) {
+	*free_output_flag=FALSE; // default is: do not free the output
+
+	/* Do we need to buffer stuff ? */
+	if (buffer->size > 0) {
+		size_t bufferized_size = buffer->index;
+
+		*offset = buffer->next_offset; /* adjust the offset to keep track of past bufferized parts */
+		size_t total_size = buffer->index+*size;
+		if (total_size >= buffer->size) { /* we have enough data to produce a chunk of at least buffer size */
+			/* we must bufferize what is over for next time */
+			buffer->index = total_size%buffer->size; /* save the pointer to the part we shall bufferize as we cannot crash the buffer yet */
+			uint8_t *next_buffer_input = input + *size - buffer->index;
+
+			*size = total_size - buffer->index; /* size must be 0 mod (buffer index) */
+			buffer->next_offset += *size;
+			/* create this chunk */
+			if (bufferized_size > 0) { /* if we had some previously buffered data, prepend, otherwise, directly use the input, the modified size will do the trick */
+				*output = (uint8_t *)belle_sip_malloc(*size);
+				memcpy(*output, buffer->data, bufferized_size);
+				memcpy(*output+bufferized_size, input, *size-bufferized_size);
+				*free_output_flag=TRUE;
+			} else {
+				*output = input;
+			}
+			/* crash the buffer with content needed for next round */
+			memcpy(buffer->data, next_buffer_input, buffer->index);
+		} else if (*size == 0 ) { /* this is the end, pass the content of the buffer */
+			*size = buffer->index;
+			buffer->next_offset += *size;
+			*output = buffer->data;
+		} else { /* just add the current chunk into the buffer */
+			memcpy(buffer->data+buffer->index, input, *size);
+			buffer->index += *size;
+			*size = 0; /* be sure we won't do anything with current data */
+			*output=NULL;
+		}
+	} else { /* nothing to do, just pass the input */
+		*output = input;
+	}
+}
+
+/*
  * User body handler implementation
  */
 
@@ -438,6 +517,14 @@ struct belle_sip_user_body_handler{
 	belle_sip_user_body_handler_recv_callback_t recv_cb;
 	belle_sip_user_body_handler_send_callback_t send_cb;
 	belle_sip_user_body_handler_stop_callback_t stop_cb;
+	belle_sip_body_handler_buffer_t buffer;
+};
+
+static void belle_sip_user_body_handler_destroy(belle_sip_user_body_handler_t *obj) {
+	if (obj->buffer.data) {
+		belle_sip_free(obj->buffer.data);
+		obj->buffer.data=NULL;
+	}
 };
 
 static void belle_sip_user_body_handler_begin_transfer(belle_sip_body_handler_t *base) {
@@ -446,17 +533,26 @@ static void belle_sip_user_body_handler_begin_transfer(belle_sip_body_handler_t 
 		obj->start_cb((belle_sip_user_body_handler_t*)base, base->user_data);
 }
 
-static void belle_sip_user_body_handler_end_transfer(belle_sip_body_handler_t *base) {
-	belle_sip_user_body_handler_t *obj = (belle_sip_user_body_handler_t *)base;
-	if (obj->stop_cb)
-		obj->stop_cb((belle_sip_user_body_handler_t*)base, base->user_data);
-}
-
 static void belle_sip_user_body_handler_recv_chunk(belle_sip_body_handler_t *base, belle_sip_message_t *msg, off_t offset, uint8_t *buf, size_t size){
 	belle_sip_user_body_handler_t *obj=(belle_sip_user_body_handler_t*)base;
-	if (obj->recv_cb)
-		obj->recv_cb((belle_sip_user_body_handler_t*)base, msg, base->user_data, offset, buf, size);
-	else belle_sip_warning("belle_sip_user_body_handler_t ignoring received chunk.");
+	if (obj->recv_cb) {
+		/* buffer the incoming data if requested */
+		uint8_t *bufferized_data = NULL;
+		bool_t free_output_flag = FALSE;
+		belle_sip_buffering_recv(&(obj->buffer), &offset, buf, &bufferized_data, &size, &free_output_flag);
+
+		/* send it to the callback if there is data to process */
+		if (size > 0) {
+			obj->recv_cb((belle_sip_user_body_handler_t*)base, msg, base->user_data, offset, bufferized_data, size);
+		}
+
+		/* cleaning */
+		if (free_output_flag) {
+			belle_sip_free(bufferized_data);
+		}
+	} else {
+		belle_sip_warning("belle_sip_user_body_handler_t ignoring received chunk.");
+	}
 }
 
 static int belle_sip_user_body_handler_send_chunk(belle_sip_body_handler_t *base, belle_sip_message_t *msg, off_t offset, uint8_t *buf, size_t *size){
@@ -468,11 +564,25 @@ static int belle_sip_user_body_handler_send_chunk(belle_sip_body_handler_t *base
 	return BELLE_SIP_STOP;
 }
 
+static void belle_sip_user_body_handler_end_transfer(belle_sip_body_handler_t *base) {
+	belle_sip_user_body_handler_t *obj = (belle_sip_user_body_handler_t *)base;
+
+	/* Are we bufferizing things ? */
+	if (obj->buffer.size > 0 && obj->buffer.index > 0) {
+		/* call the recv_chunk function with the buffer content */
+		belle_sip_user_body_handler_recv_chunk(base, NULL, obj->buffer.next_offset, NULL, 0);
+	}
+
+	if (obj->stop_cb)
+		obj->stop_cb((belle_sip_user_body_handler_t*)base, base->user_data);
+}
+
 static void belle_sip_user_body_handler_clone(belle_sip_user_body_handler_t *obj, const belle_sip_user_body_handler_t *orig){
 	obj->start_cb=orig->start_cb;
 	obj->recv_cb=orig->recv_cb;
 	obj->send_cb=orig->send_cb;
 	obj->stop_cb=orig->stop_cb;
+	belle_sip_body_handler_buffer_clone(&(obj->buffer), &(orig->buffer));
 }
 
 BELLE_SIP_DECLARE_NO_IMPLEMENTED_INTERFACES(belle_sip_user_body_handler_t);
@@ -480,7 +590,7 @@ BELLE_SIP_INSTANCIATE_CUSTOM_VPTR_BEGIN(belle_sip_user_body_handler_t)
 	{
 		{
 			BELLE_SIP_VPTR_INIT(belle_sip_user_body_handler_t,belle_sip_body_handler_t,TRUE),
-			(belle_sip_object_destroy_t) NULL,
+			(belle_sip_object_destroy_t)belle_sip_user_body_handler_destroy,
 			(belle_sip_object_clone_t)belle_sip_user_body_handler_clone,
 			NULL,
 			BELLE_SIP_DEFAULT_BUFSIZE_HINT
@@ -508,10 +618,30 @@ belle_sip_user_body_handler_t *belle_sip_user_body_handler_new(
 	obj->recv_cb=recv_cb;
 	obj->send_cb=send_cb;
 	obj->stop_cb=stop_cb;
+	obj->buffer.size=0;
+	obj->buffer.index=0;
+	obj->buffer.data=NULL;
+	obj->buffer.next_offset=0;
 	return obj;
 }
 
+belle_sip_user_body_handler_t *belle_sip_buffering_user_body_handler_new(
+	size_t total_size,
+	size_t buffer_size,
+	belle_sip_body_handler_progress_callback_t progress_cb,
+	belle_sip_user_body_handler_start_callback_t start_cb,
+	belle_sip_user_body_handler_recv_callback_t recv_cb,
+	belle_sip_user_body_handler_send_callback_t send_cb,
+	belle_sip_user_body_handler_stop_callback_t stop_cb,
+	void *data){
 
+	belle_sip_user_body_handler_t *obj = belle_sip_user_body_handler_new(total_size, progress_cb, start_cb, recv_cb, send_cb, stop_cb, data);
+
+	obj->buffer.size=buffer_size;
+	obj->buffer.data=(uint8_t *)belle_sip_malloc(buffer_size);
+
+	return obj;
+}
 /**
  * File body handler implementation
 **/
@@ -521,6 +651,7 @@ struct belle_sip_file_body_handler{
 	char *filepath;
 	bctbx_vfs_file_t *file;
 	belle_sip_user_body_handler_t *user_bh;
+	belle_sip_body_handler_buffer_t buffer;
 };
 
 static void belle_sip_file_body_handler_destroy(belle_sip_file_body_handler_t *obj) {
@@ -532,6 +663,10 @@ static void belle_sip_file_body_handler_destroy(belle_sip_file_body_handler_t *o
 			bctbx_error("Can't close file %s", obj->filepath);
 		}
 		obj->file = NULL;
+	}
+	if (obj->buffer.data) {
+		belle_sip_free(obj->buffer.data);
+		obj->buffer.data=NULL;
 	}
 	if (obj->user_bh) {
 		belle_sip_object_unref(obj->user_bh);
@@ -545,7 +680,10 @@ static void belle_sip_file_body_handler_clone(belle_sip_file_body_handler_t *obj
 	obj->user_bh = orig->user_bh;
 	if (obj->user_bh) {
 		belle_sip_object_ref(obj->user_bh);
+	} else {
+		obj->user_bh = NULL;
 	}
+	belle_sip_body_handler_buffer_clone(&(obj->buffer), &(orig->buffer));
 }
 
 static void belle_sip_file_body_handler_begin_recv_transfer(belle_sip_body_handler_t *base) {
@@ -578,8 +716,46 @@ static void belle_sip_file_body_handler_begin_send_transfer(belle_sip_body_handl
 	}
 }
 
+
+static void belle_sip_file_body_handler_recv_chunk(belle_sip_body_handler_t *base, belle_sip_message_t *msg, off_t offset, uint8_t *buf, size_t size) {
+	belle_sip_file_body_handler_t *obj = (belle_sip_file_body_handler_t *)base;
+	ssize_t ret=0;
+
+	if (obj->file == NULL) return;
+
+	uint8_t *bufferized_data = NULL;
+	bool_t free_output_flag = FALSE;
+
+	if (obj->user_bh && obj->user_bh->recv_cb) {
+		// pass the incoming data through buffering
+		belle_sip_buffering_recv(&(obj->buffer), &offset, buf, &bufferized_data, &size, &free_output_flag);
+
+		if (size>0) {
+			obj->user_bh->recv_cb((belle_sip_user_body_handler_t*)&(obj->user_bh->base), msg, obj->user_bh->base.user_data, offset, bufferized_data, size);
+		}
+	}
+
+	if (size > 0 ) {
+		ret = bctbx_file_write(obj->file, bufferized_data, size, offset);
+	}
+
+	if (free_output_flag == TRUE) {
+		belle_sip_free(bufferized_data);
+	}
+
+	if (ret == BCTBX_VFS_ERROR) {
+		bctbx_error("File body handler recv write error at offset %lu", (unsigned long)offset);
+	}
+}
+
 static void belle_sip_file_body_handler_end_transfer(belle_sip_body_handler_t *base) {
 	belle_sip_file_body_handler_t *obj = (belle_sip_file_body_handler_t *)base;
+
+	/* Are we bufferizing things ? */
+	if (obj->buffer.size > 0 && obj->buffer.index > 0) {
+		/* call the recv_chunk function with the buffer content */
+		belle_sip_file_body_handler_recv_chunk(base, NULL, obj->buffer.next_offset, NULL, 0);
+	}
 
 	if (obj->user_bh && obj->user_bh->stop_cb) {
 		obj->user_bh->stop_cb((belle_sip_user_body_handler_t*)&(obj->user_bh->base), obj->user_bh->base.user_data);
@@ -592,22 +768,6 @@ static void belle_sip_file_body_handler_end_transfer(belle_sip_body_handler_t *b
 			bctbx_error("Can't close file %s", obj->filepath);
 		}
 		obj->file = NULL;
-	}
-}
-
-static void belle_sip_file_body_handler_recv_chunk(belle_sip_body_handler_t *base, belle_sip_message_t *msg, off_t offset, uint8_t *buf, size_t size) {
-	belle_sip_file_body_handler_t *obj = (belle_sip_file_body_handler_t *)base;
-	ssize_t ret;
-
-	if (obj->file == NULL) return;
-
-	if (obj->user_bh && obj->user_bh->recv_cb) {
-		obj->user_bh->recv_cb((belle_sip_user_body_handler_t*)&(obj->user_bh->base), msg, obj->user_bh->base.user_data, offset, buf, size);
-	}
-
-	ret = bctbx_file_write(obj->file, buf, size, offset);
-	if (ret == BCTBX_VFS_ERROR) {
-		bctbx_error("File body handler recv write error at offset %lu", (unsigned long)offset);
 	}
 }
 
@@ -659,6 +819,19 @@ belle_sip_file_body_handler_t *belle_sip_file_body_handler_new(const char *filep
 	if (stat(obj->filepath, &statbuf) == 0) {
 		obj->base.expected_size = statbuf.st_size;
 	}
+	obj->buffer.size=0;
+	obj->buffer.index=0;
+	obj->buffer.data=NULL;
+	obj->buffer.next_offset=0;
+	return obj;
+}
+
+belle_sip_file_body_handler_t *belle_sip_buffering_file_body_handler_new(const char *filepath, const size_t buffer_size, belle_sip_body_handler_progress_callback_t progress_cb, void *data) {
+	belle_sip_file_body_handler_t *obj = belle_sip_file_body_handler_new(filepath, progress_cb, data);
+
+	obj->buffer.size=buffer_size;
+	obj->buffer.data=(uint8_t *)belle_sip_malloc(buffer_size);
+
 	return obj;
 }
 
@@ -803,11 +976,6 @@ static int belle_sip_multipart_body_handler_send_chunk(belle_sip_body_handler_t 
 	return BELLE_SIP_STOP;
 }
 
-/* FIXME: Temporary workaround for -Wcast-function-type. */
-#if __GNUC__ >= 8
-	_Pragma("GCC diagnostic push")
-	_Pragma("GCC diagnostic ignored \"-Wcast-function-type\"")
-#endif // if __GNUC__ >= 8
 
 BELLE_SIP_DECLARE_NO_IMPLEMENTED_INTERFACES(belle_sip_multipart_body_handler_t);
 BELLE_SIP_INSTANCIATE_CUSTOM_VPTR_BEGIN(belle_sip_multipart_body_handler_t)
@@ -826,10 +994,6 @@ BELLE_SIP_INSTANCIATE_CUSTOM_VPTR_BEGIN(belle_sip_multipart_body_handler_t)
 		belle_sip_multipart_body_handler_send_chunk
 	}
 BELLE_SIP_INSTANCIATE_CUSTOM_VPTR_END
-
-#if __GNUC__ >= 8
-	_Pragma("GCC diagnostic pop")
-#endif // if __GNUC__ >= 8
 
 static void belle_sip_multipart_body_handler_set_boundary(belle_sip_multipart_body_handler_t *obj, const char *boundary) {
 	if (obj->boundary != NULL) {

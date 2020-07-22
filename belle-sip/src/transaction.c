@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "belle_sip_internal.h"
 
@@ -116,10 +117,56 @@ static int client_transaction_on_call_repair_timer(belle_sip_transaction_t *t) {
 	return BELLE_SIP_STOP;
 }
 
+static void transaction_handle_channel_error(belle_sip_transaction_t *t, belle_sip_channel_t *chan){
+	belle_sip_io_error_event_t ev;
+	belle_sip_transaction_state_t tr_state=belle_sip_transaction_get_state((belle_sip_transaction_t*)t);
+	const belle_sip_timer_config_t *timercfg = NULL;
+	
+	belle_sip_object_ref(t);  /*take a ref in the case where the app calls belle_sip_transaction_terminate() within the listener*/
+	
+	ev.transport=belle_sip_channel_get_transport_name(chan);
+	ev.source=BELLE_SIP_OBJECT(t);
+	ev.port=chan->peer_port;
+	ev.host=chan->peer_name;
+	
+	if ( tr_state!=BELLE_SIP_TRANSACTION_COMPLETED
+		&& tr_state!=BELLE_SIP_TRANSACTION_CONFIRMED
+		&& tr_state!=BELLE_SIP_TRANSACTION_ACCEPTED
+		&& tr_state!=BELLE_SIP_TRANSACTION_TERMINATED) {
+		BELLE_SIP_PROVIDER_INVOKE_LISTENERS_FOR_TRANSACTION(((belle_sip_transaction_t*)t),process_io_error,&ev);
+	}
+	if (t->timed_out) {
+		notify_timeout((belle_sip_transaction_t*)t);
+	} else {
+		if (BELLE_SIP_OBJECT_IS_INSTANCE_OF(t, belle_sip_ist_t) || BELLE_SIP_OBJECT_IS_INSTANCE_OF(t, belle_sip_ict_t)) {
+			timercfg = belle_sip_transaction_get_timer_config(t);
+			if (t->call_repair_timer) {
+				belle_sip_transaction_stop_timer(t, t->call_repair_timer);
+				belle_sip_object_unref(t->call_repair_timer);
+				t->call_repair_timer = NULL;
+			}
+		}
+	}
+	if (!t->timed_out && belle_sip_transaction_state_is_transient(t->state) && BELLE_SIP_OBJECT_IS_INSTANCE_OF(t, belle_sip_ist_t)) {
+		t->call_repair_timer = belle_sip_timeout_source_new((belle_sip_source_func_t)server_transaction_on_call_repair_timer, t, 32 * timercfg->T1);
+		belle_sip_transaction_start_timer(t, t->call_repair_timer);
+	} else if (!t->timed_out && belle_sip_transaction_state_is_transient(t->state) && BELLE_SIP_OBJECT_IS_INSTANCE_OF(t, belle_sip_ict_t)) {
+		t->call_repair_timer = belle_sip_timeout_source_new((belle_sip_source_func_t)client_transaction_on_call_repair_timer, t, 32 * timercfg->T1);
+		belle_sip_transaction_start_timer(t, t->call_repair_timer);
+	} else {
+		belle_sip_transaction_terminate(t);
+	}
+
+	if (t->channel){
+		belle_sip_channel_remove_listener(t->channel, (belle_sip_channel_listener_t*)t);
+		belle_sip_object_unref(t->channel);
+		t->channel = NULL;
+	}
+	belle_sip_object_unref(t);
+}
+
 static void on_channel_state_changed(belle_sip_channel_listener_t *l, belle_sip_channel_t *chan, belle_sip_channel_state_t state){
 	belle_sip_transaction_t *t=(belle_sip_transaction_t*)l;
-	belle_sip_io_error_event_t ev;
-	const belle_sip_timer_config_t *timercfg = NULL;
 	belle_sip_transaction_state_t tr_state=belle_sip_transaction_get_state((belle_sip_transaction_t*)t);
 
 	belle_sip_message("transaction [%p] channel state changed to [%s]"
@@ -134,62 +181,20 @@ static void on_channel_state_changed(belle_sip_channel_listener_t *l, belle_sip_
 		break;
 		case BELLE_SIP_CHANNEL_DISCONNECTED:
 		case BELLE_SIP_CHANNEL_ERROR:
-			belle_sip_object_ref(t);  /*take a ref in the case where the app calls belle_sip_transaction_terminate() within the listener*/
-			ev.transport=belle_sip_channel_get_transport_name(chan);
-			ev.source=BELLE_SIP_OBJECT(t);
-			ev.port=chan->peer_port;
-			ev.host=chan->peer_name;
-			if ( tr_state!=BELLE_SIP_TRANSACTION_COMPLETED
-				&& tr_state!=BELLE_SIP_TRANSACTION_CONFIRMED
-				&& tr_state!=BELLE_SIP_TRANSACTION_ACCEPTED
-				&& tr_state!=BELLE_SIP_TRANSACTION_TERMINATED) {
-				BELLE_SIP_PROVIDER_INVOKE_LISTENERS_FOR_TRANSACTION(((belle_sip_transaction_t*)t),process_io_error,&ev);
-			}
-			if (t->timed_out) {
-				notify_timeout((belle_sip_transaction_t*)t);
-			} else {
-				if (BELLE_SIP_OBJECT_IS_INSTANCE_OF(t, belle_sip_ist_t) || BELLE_SIP_OBJECT_IS_INSTANCE_OF(t, belle_sip_ict_t)) {
-					timercfg = belle_sip_transaction_get_timer_config(t);
-					if (t->call_repair_timer) {
-						belle_sip_transaction_stop_timer(t, t->call_repair_timer);
-						belle_sip_object_unref(t->call_repair_timer);
-						t->call_repair_timer = NULL;
-					}
-				}
-			}
-
-			/* FIXME: Temporary workaround for -Wcast-function-type. */
-			#if __GNUC__ >= 8
-				_Pragma("GCC diagnostic push")
-				_Pragma("GCC diagnostic ignored \"-Wcast-function-type\"")
-			#endif // if __GNUC__ >= 8
-
-			if (!t->timed_out && belle_sip_transaction_state_is_transient(t->state) && BELLE_SIP_OBJECT_IS_INSTANCE_OF(t, belle_sip_ist_t)) {
-				t->call_repair_timer = belle_sip_timeout_source_new((belle_sip_source_func_t)server_transaction_on_call_repair_timer, t, 32 * timercfg->T1);
-				belle_sip_transaction_start_timer(t, t->call_repair_timer);
-			} else if (!t->timed_out && belle_sip_transaction_state_is_transient(t->state) && BELLE_SIP_OBJECT_IS_INSTANCE_OF(t, belle_sip_ict_t)) {
-				t->call_repair_timer = belle_sip_timeout_source_new((belle_sip_source_func_t)client_transaction_on_call_repair_timer, t, 32 * timercfg->T1);
-				belle_sip_transaction_start_timer(t, t->call_repair_timer);
-			} else {
-				belle_sip_transaction_terminate(t);
-			}
-
-			#if __GNUC__ >= 8
-				_Pragma("GCC diagnostic pop")
-			#endif // if __GNUC__ >= 8
-
-			if (t->channel){
-				belle_sip_channel_remove_listener(t->channel, l);
-				belle_sip_object_unref(t->channel);
-				t->channel = NULL;
-			}
-			belle_sip_object_unref(t);
-
+			transaction_handle_channel_error(t, chan);
+		break;
+		case BELLE_SIP_CHANNEL_RETRY:
+			/* Going to the retry state means that the transaction will loose its transport, and get a new one.
+			 * While it has no matter if the request was not yet sent, it is a fatal error otherwise.
+			 */
+			if (tr_state != BELLE_SIP_TRANSACTION_INIT)
+				transaction_handle_channel_error(t, chan);
 		break;
 		default:
 			/*ignored*/
 		break;
 	}
+	/* NO MORE INSTRUCTIONS - transaction_handle_channel_error() may delete both the channel and the transaction.*/
 }
 
 BELLE_SIP_IMPLEMENT_INTERFACE_BEGIN(belle_sip_transaction_t,belle_sip_channel_listener_t)
@@ -602,7 +607,7 @@ void belle_sip_client_transaction_notify_response(belle_sip_client_transaction_t
 				dialog=belle_sip_provider_find_dialog_from_message(t->base.provider,(belle_sip_message_t*)resp,FALSE);
 				if (!dialog && should_dialog_be_created(t, resp, TRUE)){
 					dialog=belle_sip_provider_create_dialog_internal(t->base.provider,BELLE_SIP_TRANSACTION(t),FALSE);/*belle_sip_dialog_new(base);*/
-					belle_sip_message("Handling response creating a new dialog !");
+					belle_sip_message("Handling response creating a new dialog!");
 				}
 			}
 		}
@@ -625,9 +630,21 @@ void belle_sip_client_transaction_notify_response(belle_sip_client_transaction_t
 	if (dialog && status_code>=200 && status_code<300 && strcmp(method,"INVITE")==0){
 		belle_sip_dialog_check_ack_sent(dialog);
 	}
-	/*report a server having internal errors for REGISTER to the channel, in order to go to a fallback IP*/
-	if (status_code == 500 && strcmp(method,"REGISTER") == 0){
-		belle_sip_channel_notify_server_error(base->channel);
+	/*
+	 * Report a server having internal errors for REGISTER to the channel, in order to go to a fallback IP.
+	 * Why for only REGISTER ? because we are sure that the response comes from the server we are connected to.
+	 * For others (INVITE, SUBSCRIBE), the response may come from an intermediary server, or the final client.
+	 * It would be a bad idea to close the connection and fallback to another node in these cases.
+	 */
+	if (strcmp(method,"REGISTER") == 0){
+		switch (status_code){
+			case 500: /* Internal error */
+			case 503: /* Service unavailable */
+				belle_sip_channel_notify_server_error(base->channel);
+			break;
+			default:
+			break;
+		}
 	}
 }
 
@@ -739,7 +756,8 @@ int belle_sip_client_transaction_is_notify_matching_pending_subscribe(
 
 
 	if (strcmp("NOTIFY",belle_sip_request_get_method(notify)) != 0) {
-		belle_sip_error("belle_sip_client_transaction_is_notify_matching_pending_subscribe for dialog [%p], requires a notify request",notify);
+		belle_sip_error("belle_sip_client_transaction_is_notify_matching_pending_subscribe for request [%p], requires a notify request",notify);
+		return 0;
 	}
 
 	subscription = belle_sip_transaction_get_request(BELLE_SIP_TRANSACTION(trans));

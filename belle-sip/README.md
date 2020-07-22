@@ -9,11 +9,28 @@ Overview
 Belle-sip is a modern library implementing SIP (RFC3261) transport, transaction and dialog layers.
 It is written in C, with an object oriented API.
 It also comprises a simple HTTP/HTTPS client implementation.
-Copyright 2012-now, Belledonne Communications SARL <sales@belledonne-communications.com>, all rights reserved.
 
-Belle-sip is distributed to everyone under the GNU GPLv2 (see COPYING file for details).
-Incorporating belle-sip within a closed source project is not possible under the GPL.
-Commercial licensing can be purchased for that purpose from [Belledonne Communications](http://www.belledonne-communications.com).
+License
+-------
+
+Copyright © Belledonne Communications
+
+Belle-sip is dual licensed, and is available either :
+
+ - under a [GNU/GPLv3 license](https://www.gnu.org/licenses/gpl-3.0.en.html), for free (open source). Please make sure that you understand and agree with the terms of this license before using it (see LICENSE.txt file for details).
+
+ - under a proprietary license, for a fee, to be used in closed source applications. Contact [Belledonne Communications](https://www.linphone.org/contact) for any question about costs and services.
+
+Features
+--------
+
+- RFC3261 compliant implementation of SIP parser, writer, transactions and dialog layers.
+- SIP transaction state machines with lastest updates (RFC6026).
+- fully asynchronous transport layer (UDP, TCP, TLS), comprising DNS resolver (SRV, A, AAAA).
+- full dual-stack IPv6 support.
+- automatic management of request refreshes with network disconnection resiliency thanks to the "refresher" object.
+- supported platforms: Linux, Mac OSX, windows XP+, iOS, Android, Blackberry 10.
+- HTTP/HTTPS client implementation.
 
 Dependencies
 ------------
@@ -29,27 +46,22 @@ These are required to generate a C sourcefile from SIP grammar using [antlr3](ht
 ### Runtime dependencies
 
 - *libantlr3c* version 3.2 or 3.4 - but its source is included in belle-sip, no need to install it.
-- *bctoolbox* (git://git.linphone.org/bctoolbox.git or <http://www.linphone.org/releases/sources/bctoolbox/>)
-
-
-### Under Debian/Ubuntu
-
-		apt-get install antlr3
-
-
-### Under MacOS X using HomeBrew
-
-		brew install libantlr3.4c homebrew/versions/antlr3
+- *bctoolbox* (git://git.linphone.org/bctoolbox.git or <https://gitlab.linphone.org/BC/public/bctoolbox>)
 
 
 Building belle-sip with CMake
 -----------------------------
 
-		cmake . -DCMAKE_INSTALL_PREFIX=<prefix> -DCMAKE_PREFIX_PATH=<search_prefix>
-	
-		make
-		make install
+	cmake .
+	make
+	make install
 
+Generating the grammar sources
+------------------------------
+
+If you edit the `.g` files in the grammars directory you'll need to regenerate the sources.
+
+    ./src/antlr3c/generate_grammar_sources.py
 
 Build options
 -------------
@@ -76,4 +88,3 @@ cd WORK
 cmake3 ../
 make package_source
 rpmbuild -ta --clean --rmsource --rmspec belle-sip-<version>-<release>.tar.gz
-

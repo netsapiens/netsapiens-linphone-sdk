@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "belle_sip_internal.h"
 
@@ -38,6 +39,13 @@ int _belle_sip_object_is_instance_of(belle_sip_object_t * obj,belle_sip_type_id_
 
 void belle_sip_object_enable_marshal_check(int enable) {
 	_belle_sip_object_marshal_check_enabled = (enable) ? TRUE : FALSE;
+}
+
+
+static const char * belle_sip_object_vptr_get_type_name(const belle_sip_object_t *obj){
+	if (!obj->vptr->is_cpp)
+		return obj->vptr->type_name;
+	return belle_sip_cpp_object_get_type_name(obj);
 }
 
 
@@ -85,7 +93,7 @@ void belle_sip_object_dump_active_objects(void){
 		for(elem=all_objects;elem!=NULL;elem=elem->next){
 			belle_sip_object_t *obj=(belle_sip_object_t*)elem->data;
 			char* content= belle_sip_object_to_string(obj);
-			belle_sip_warning("%s(%p) ref=%i, content [%10s...]",obj->vptr->type_name,obj,obj->ref,content);
+			belle_sip_warning("%s(%p) ref=%i, content [%10s...]",belle_sip_object_vptr_get_type_name(obj),obj,obj->ref,content);
 			belle_sip_free(content);
 		}
 	}else belle_sip_warning("No objects leaked.");
@@ -226,7 +234,7 @@ static void _belle_sip_object_clone(belle_sip_object_t *obj, const belle_sip_obj
 }
 
 static belle_sip_error_code _belle_object_marshal(belle_sip_object_t* obj, char* buff, size_t buff_size, size_t *offset) {
-	return belle_sip_snprintf(buff,buff_size,offset,"{%s::%s %p}",obj->vptr->type_name,obj->name ? obj->name : "(no name)",obj);
+	return belle_sip_snprintf(buff,buff_size,offset,"{%s::%s %p}",belle_sip_object_vptr_get_type_name(obj),obj->name ? obj->name : "(no name)",obj);
 }
 
 static belle_sip_object_vptr_t *no_parent(void){
@@ -575,7 +583,7 @@ static char * belle_sip_object_to_alloc_string(const belle_sip_object_t *obj, in
 	belle_sip_error_code error = belle_sip_object_marshal((belle_sip_object_t *)obj,buf,size_hint-1,&offset);
 	obj->vptr->tostring_bufsize_hint=size_hint;
 	if (error==BELLE_SIP_BUFFER_OVERFLOW){
-		belle_sip_message("belle_sip_object_to_alloc_string(): hint buffer was too short while doing to_string() for %s, retrying", obj->vptr->type_name);
+		belle_sip_message("belle_sip_object_to_alloc_string(): hint buffer was too short while doing to_string() for %s, retrying", belle_sip_object_vptr_get_type_name(obj));
 		belle_sip_free(buf);
 		return belle_sip_object_to_alloc_string(obj,2*size_hint);
 	}
@@ -608,14 +616,14 @@ char* belle_sip_object_to_string(const void* _obj) {
 	}
 }
 
-char * _belle_sip_object_describe_type(belle_sip_object_vptr_t *vptr){
+char * _belle_sip_object_describe_type(belle_sip_object_t *obj, belle_sip_object_vptr_t *vptr){
 	const int maxbufsize=2048;
 	char *ret=belle_sip_malloc(maxbufsize);
 	belle_sip_object_vptr_t *it;
 	size_t pos=0;
 	belle_sip_list_t *l=NULL,*elem;
 	belle_sip_snprintf(ret,maxbufsize,&pos,"Ownership:\n");
-	belle_sip_snprintf(ret,maxbufsize,&pos,"\t%s is created initially %s\n",vptr->type_name,
+	belle_sip_snprintf(ret,maxbufsize,&pos,"\t%s is created initially %s\n", obj ? belle_sip_object_vptr_get_type_name(obj) : vptr->type_name,
 				  vptr->initially_unowned ? "unowned" : "owned");
 	belle_sip_snprintf(ret,maxbufsize,&pos,"\nInheritance diagram:\n");
 	for(it=vptr;it!=NULL;it=it->get_parent()){
@@ -642,7 +650,7 @@ char * _belle_sip_object_describe_type(belle_sip_object_vptr_t *vptr){
 
 char *belle_sip_object_describe(void *obj){
 	belle_sip_object_t *o=BELLE_SIP_OBJECT(obj);
-	return _belle_sip_object_describe_type(o->vptr);
+	return _belle_sip_object_describe_type(o, o->vptr);
 }
 
 #if !defined(_WIN32)
@@ -669,7 +677,7 @@ char *belle_sip_object_describe_type_from_name(const char *name){
 		return NULL;
 	}
 	vptr_getter=(belle_sip_object_get_vptr_t)symbol;
-	return _belle_sip_object_describe_type(vptr_getter());
+	return _belle_sip_object_describe_type(NULL, vptr_getter());
 }
 
 #else

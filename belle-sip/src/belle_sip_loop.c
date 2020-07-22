@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "belle-sip/belle-sip.h"
 #include "belle_sip_internal.h"
@@ -252,11 +253,11 @@ struct belle_sip_main_loop{
 	belle_sip_object_t base;
 	belle_sip_list_t *fd_sources;
 	bctbx_map_t *timer_sources;
+	bctbx_mutex_t sources_mutex; // mutex to avoid concurency between source addition/removing/cancelling and main loop iteration.
 	belle_sip_object_pool_t *pool;
 	int nsources;
 	int run;
 	int in_loop;
-	bctbx_mutex_t timer_sources_mutex;
 #ifndef _WIN32
 	int control_fds[2];
 	unsigned long thread_id;
@@ -269,31 +270,29 @@ static void belle_sip_main_loop_remove_source_internal(
 	bool_t destroy_timer_sources
 ) {
 	int unrefs = 0;
+
+	bctbx_mutex_lock(&ml->sources_mutex);
 	if (source->node.next || source->node.prev || &source->node==ml->fd_sources)  {
 		ml->fd_sources=belle_sip_list_remove_link(ml->fd_sources,&source->node);
 		unrefs++;
 	}
 	if (source->it) {
-		bctbx_mutex_lock(&ml->timer_sources_mutex);
 		if (destroy_timer_sources)
 			bctbx_map_erase(ml->timer_sources, source->it);
 		bctbx_iterator_delete(source->it);
-		bctbx_mutex_unlock(&ml->timer_sources_mutex);
-
 		source->it=NULL;
 		unrefs++;
 	}
 	if (unrefs) {
 		source->cancelled=TRUE;
 		ml->nsources--;
-		if (source->on_remove)
-			source->on_remove(source);
-
-		while(unrefs) {
-			belle_sip_object_unref(source);
-			unrefs--;
-		}
+		bctbx_mutex_unlock(&ml->sources_mutex);
+		if (source->on_remove) source->on_remove(source);
+		// the mutex must be taken for unrefing because belle_sip_object_unref() isn't thread-safe
+		bctbx_mutex_lock(&ml->sources_mutex);
+		for (; unrefs > 0; --unrefs) belle_sip_object_unref(source);
 	}
+	bctbx_mutex_unlock(&ml->sources_mutex);
 }
 
 void belle_sip_main_loop_remove_source(belle_sip_main_loop_t *ml, belle_sip_source_t *source) {
@@ -324,7 +323,7 @@ static void belle_sip_main_loop_destroy(belle_sip_main_loop_t *ml){
 	}
 
 	bctbx_mmap_ullong_delete(ml->timer_sources);
-	bctbx_mutex_destroy(&ml->timer_sources_mutex);
+	bctbx_mutex_destroy(&ml->sources_mutex);
 
 #ifndef _WIN32
 	close(ml->control_fds[0]);
@@ -339,11 +338,14 @@ belle_sip_main_loop_t *belle_sip_main_loop_new(void){
 	belle_sip_main_loop_t*m=belle_sip_object_new(belle_sip_main_loop_t);
 	m->pool=belle_sip_object_pool_push();
 	m->timer_sources = bctbx_mmap_ullong_new();
-	bctbx_mutex_init(&m->timer_sources_mutex,NULL);
+	bctbx_mutex_init(&m->sources_mutex,NULL);
 
 #ifndef _WIN32
 	if (pipe(m->control_fds) == -1){
 		belle_sip_fatal("Cannot create control pipe of main loop thread: %s", strerror(errno));
+	}
+	if (fcntl(m->control_fds[0], F_SETFL, O_NONBLOCK) < 0) {
+		belle_sip_fatal("Fail to set O_NONBLOCK flag on the reading fd of the control pipe: %s", strerror(errno));
 	}
 	m->thread_id = 0;
 #endif
@@ -354,13 +356,12 @@ belle_sip_main_loop_t *belle_sip_main_loop_new(void){
 void belle_sip_main_loop_wake_up(belle_sip_main_loop_t *ml);
 
 void belle_sip_main_loop_add_source(belle_sip_main_loop_t *ml, belle_sip_source_t *source){
+	bctbx_mutex_lock(&ml->sources_mutex);
 	if (source->node.next || source->node.prev){
 		belle_sip_fatal("Source is already linked somewhere else.");
-		return;
 	}
 	if (source->node.data!=source){
 		belle_sip_fatal("Insane source passed to belle_sip_main_loop_add_source() !");
-		return;
 	}
 
 	source->ml=ml;
@@ -368,11 +369,10 @@ void belle_sip_main_loop_add_source(belle_sip_main_loop_t *ml, belle_sip_source_
 	if (source->timeout>=0){
 		belle_sip_object_ref(source);
 		source->expire_ms=belle_sip_time_ms()+source->timeout;
-		bctbx_mutex_lock(&ml->timer_sources_mutex);
-		source->it = bctbx_map_insert_and_delete_with_returned_it(ml->timer_sources
-																	  , (bctbx_pair_t*)bctbx_pair_ullong_new(source->expire_ms, source));
-		bctbx_mutex_unlock(&ml->timer_sources_mutex);
-
+		source->it = bctbx_map_insert_and_delete_with_returned_it(
+			ml->timer_sources,
+			(bctbx_pair_t*)bctbx_pair_ullong_new(source->expire_ms, source)
+		);
 	}
 	source->cancelled=FALSE;
 	if (source->fd != (belle_sip_fd_t)-1 ) {
@@ -385,6 +385,8 @@ void belle_sip_main_loop_add_source(belle_sip_main_loop_t *ml, belle_sip_source_
 	if (ml->thread_id != bctbx_thread_self())
 		belle_sip_main_loop_wake_up(ml);
 #endif
+
+	bctbx_mutex_unlock(&ml->sources_mutex);
 }
 
 belle_sip_source_t* belle_sip_main_loop_create_timeout_with_remove_cb(  belle_sip_main_loop_t *ml
@@ -416,59 +418,99 @@ unsigned long belle_sip_main_loop_add_timeout(belle_sip_main_loop_t *ml, belle_s
 	return s->id;
 }
 
-void belle_sip_main_loop_do_later(belle_sip_main_loop_t *ml, belle_sip_callback_t func, void *data){
-	/* FIXME: Temporary workaround for -Wcast-function-type. */
-	#if __GNUC__ >= 8
-		_Pragma("GCC diagnostic push")
-		_Pragma("GCC diagnostic ignored \"-Wcast-function-type\"")
-	#endif // if __GNUC__ >= 8
+typedef struct {
+	belle_sip_callback_t func;
+	void *user_data;
+	belle_sip_source_t *source;
+} DoLaterData;
 
-	belle_sip_source_t * s=belle_sip_main_loop_create_timeout(ml,(belle_sip_source_func_t)func,data,0,"defered task");
-
-	#if __GNUC__ >= 8
-		_Pragma("GCC diagnostic pop")
-	#endif // if __GNUC__ >= 8
-
-	s->oneshot=TRUE;
-	belle_sip_object_unref(s);
+static int _do_later_cb(void *user_data, unsigned int event) {
+	DoLaterData *data = (DoLaterData *)user_data;
+	data->func(data->user_data);
+	belle_sip_object_unref(data->source);
+	belle_sip_free(data);
+	return BELLE_SIP_STOP;
 }
 
+void belle_sip_main_loop_do_later_with_name(
+	belle_sip_main_loop_t *ml,
+	belle_sip_callback_t func,
+	void *data,
+	const char *timer_name
+){
+	DoLaterData *dolater_data = belle_sip_new0(DoLaterData);
+	dolater_data->func = func;
+	dolater_data->user_data = data;
 
-void belle_sip_source_set_timeout(belle_sip_source_t *s, unsigned int value_ms){
+	/* The belle_sip_source_t is stored in dolater_data in order to decrement the refcounter in the
+	   same thread than the main loop's. Otherwise, the ref counter may be corrupted because of race conditions
+	   if the belle_sip_source_t was after the call to belle_sip_main_loop_add_source() */
+	dolater_data->source = belle_sip_timeout_source_new(_do_later_cb, dolater_data, 0);
+
+	belle_sip_object_set_name((belle_sip_object_t *)dolater_data->source, timer_name ? timer_name : "deferred task");
+	dolater_data->source->oneshot=TRUE;
+
+	/* This function MUST be the last to guarantee thread-safety. */
+	belle_sip_main_loop_add_source(ml,dolater_data->source);
+}
+
+void belle_sip_main_loop_do_later(belle_sip_main_loop_t *ml, belle_sip_callback_t func, void *data){
+	belle_sip_main_loop_do_later_with_name(ml, func, data, NULL);
+}
+
+void belle_sip_source_set_timeout(belle_sip_source_t *s, unsigned int value_ms) {
+	/*
+	   WARNING: that's important to cast 'value_ms' into 'int' before giving it to belle_sip_source_set_timeout_int64()
+	   in order to mimic the behavior of belle_sip_source_set_timeout() when the timeout was declared as 'int'
+	   in the belle_sip_source_t structure.
+	   That allows to write belle_sip_source_set_timeout(s, -1) to disable the timeout.
+	*/
+	belle_sip_source_set_timeout_int64(s, (int)value_ms);
+}
+
+void belle_sip_source_set_timeout_int64(belle_sip_source_t *s, int64_t value_ms) {
+	belle_sip_main_loop_t *ml = s->ml;
+	// take the mutex only when the source has been added to the mail loop
+	if (ml) bctbx_mutex_lock(&ml->sources_mutex);
 	if (!s->expired){
-		belle_sip_main_loop_t *ml = s->ml;
 		s->expire_ms=belle_sip_time_ms()+value_ms;
 		if (s->it){
 			/*this timeout is already sorted in the timer_sources map, we need to move it to its new place*/
-			bctbx_mutex_lock(&ml->timer_sources_mutex);
 			bctbx_map_erase(ml->timer_sources, s->it);
 			bctbx_iterator_delete(s->it);
 			s->it = bctbx_map_insert_and_delete_with_returned_it(ml->timer_sources,
 				(bctbx_pair_t*)bctbx_pair_ullong_new(s->expire_ms, s));
-			bctbx_mutex_unlock(&ml->timer_sources_mutex);
 		}
 	}
 	s->timeout=value_ms;
+	if (ml) bctbx_mutex_unlock(&ml->sources_mutex);
 }
 
 void belle_sip_source_set_remove_cb(belle_sip_source_t *s, belle_sip_source_remove_callback_t func) {
 	s->on_remove=func;
 }
 
-unsigned int belle_sip_source_get_timeout(const belle_sip_source_t *s){
+unsigned int belle_sip_source_get_timeout(const belle_sip_source_t *s) {
+	return (unsigned int)s->timeout;
+}
+
+int64_t belle_sip_source_get_timeout_int64(const belle_sip_source_t *s) {
 	return s->timeout;
 }
 
 void belle_sip_source_cancel(belle_sip_source_t *s){
-	s->cancelled=TRUE;
-	if (s->it) {
-		bctbx_mutex_lock(&s->ml->timer_sources_mutex);
-		bctbx_map_erase(s->ml->timer_sources, s->it);
-		bctbx_iterator_delete(s->it);
-		/*put on front*/
-		s->it = bctbx_map_insert_and_delete_with_returned_it(s->ml->timer_sources, (bctbx_pair_t*)bctbx_pair_ullong_new(0, s));
-
-		bctbx_mutex_unlock(&s->ml->timer_sources_mutex);
+	if (s->ml) {
+		bctbx_mutex_lock(&s->ml->sources_mutex);
+		s->cancelled = TRUE;
+		if (s->it) {
+			bctbx_map_erase(s->ml->timer_sources, s->it);
+			bctbx_iterator_delete(s->it);
+			/*put on front*/
+			s->it = bctbx_map_insert_and_delete_with_returned_it(s->ml->timer_sources, (bctbx_pair_t*)bctbx_pair_ullong_new(0, s));
+		}
+		bctbx_mutex_unlock(&s->ml->sources_mutex);
+	} else {
+		s->cancelled = TRUE;
 	}
 }
 
@@ -500,11 +542,27 @@ void belle_sip_main_loop_cancel_source(belle_sip_main_loop_t *ml, unsigned long 
 	if (s) belle_sip_source_cancel(s);
 }
 
+/**
+ * Clear all data of a pipe.
+ * @param[in] read_fd Opened file descriptor used to read the pipe. This fd MUST have O_NONBLOCK flag set.
+ * @return On success, return the number of bytes that have been cleard or zero if the pipe was already empty.
+ * On failure, return -1 and set errno.
+ */
+static ssize_t clear_pipe(int read_fd) {
+	char buffer[1024];
+	ssize_t nread, cum_nread = 0;
+	do {
+		nread = read(read_fd, buffer, sizeof(buffer));
+		if (nread > 0) cum_nread += nread;
+	} while (nread > 0);
+	if (nread < 0 && errno != EAGAIN) return -1;
+	else return cum_nread;
+}
+
 static void belle_sip_main_loop_iterate(belle_sip_main_loop_t *ml){
 	size_t pfd_size = (ml->nsources + 1) * sizeof(belle_sip_pollfd_t);
 	belle_sip_pollfd_t *pfd=(belle_sip_pollfd_t*)belle_sip_malloc0(pfd_size);
 	int i=0;
-	belle_sip_source_t *s;
 	belle_sip_list_t *elem,*next;
 	int duration=-1;
 	int ret;
@@ -520,9 +578,10 @@ static void belle_sip_main_loop_iterate(belle_sip_main_loop_t *ml){
 	}
 
 	/*Step 1: prepare the pollfd table and get the next timeout value */
+	bctbx_mutex_lock(&ml->sources_mutex); // Lock for the whole step 1
 	for(elem=ml->fd_sources;elem!=NULL;elem=next) {
 		next=elem->next;
-		s=(belle_sip_source_t*)elem->data;
+		belle_sip_source_t *s=(belle_sip_source_t*)elem->data;
 		if (!s->cancelled){
 			if (s->fd!=(belle_sip_fd_t)-1){
 				belle_sip_source_to_poll(s,pfd,i);
@@ -552,25 +611,27 @@ static void belle_sip_main_loop_iterate(belle_sip_main_loop_t *ml){
 		bctbx_iterator_delete(it);
 		it = NULL;
 	}
+	bctbx_mutex_unlock(&ml->sources_mutex);
 
 	/* do the poll */
 	ret=belle_sip_poll(pfd,i,duration);
 	if (ret==-1){
 		goto end;
 	}
+
 #ifndef _WIN32
 	if (pfd[i - 1].revents == POLLIN){
-		char c;
-		if (read(ml->control_fds[0], &c, 1) == -1)
+		if (clear_pipe(ml->control_fds[0]) == -1)
 			belle_sip_fatal("Cannot read control pipe of main loop thread: %s", strerror(errno));
 	}
 #endif
 
 	/* Step 2: examine poll results and determine the list of source to be notified */
+	bctbx_mutex_lock(&ml->sources_mutex); // Lock for step 2 and step 3.
 	cur=belle_sip_time_ms();
 	for(elem=ml->fd_sources;elem!=NULL;elem=elem->next){
 		unsigned revents=0;
-		s=(belle_sip_source_t*)elem->data;
+		belle_sip_source_t *s=(belle_sip_source_t*)elem->data;
 		if (!s->cancelled){
 			if (s->fd!=(belle_sip_fd_t)-1){
 				if (s->notify_required) { /*for testing purpose to force channel to read*/
@@ -590,14 +651,12 @@ static void belle_sip_main_loop_iterate(belle_sip_main_loop_t *ml){
 	}
 
 	/* Step 3: find timeouted sources */
-
-	bctbx_mutex_lock(&ml->timer_sources_mutex); /*iterator chain might be alterated by element insertion*/
 	it = bctbx_map_begin(ml->timer_sources);
 	end = bctbx_map_end(ml->timer_sources);
 	while (!bctbx_iterator_equals(it,end)) {
 		/*use first because in case of canceled timer, key != s->expire_ms*/
 		uint64_t expire = bctbx_pair_ullong_get_first((const bctbx_pair_ullong_t *)bctbx_iterator_get_pair(it));
-		s = (belle_sip_source_t*)bctbx_pair_get_second(bctbx_iterator_get_pair(it));
+		belle_sip_source_t *s = (belle_sip_source_t*)bctbx_pair_get_second(bctbx_iterator_get_pair(it));
 		if (expire > cur) {
 			/* no need to continue looping because map is ordered*/
 			break;
@@ -613,11 +672,11 @@ static void belle_sip_main_loop_iterate(belle_sip_main_loop_t *ml){
 	}
 	bctbx_iterator_delete(it);
 	bctbx_iterator_delete(end);
-	bctbx_mutex_unlock(&ml->timer_sources_mutex);
+	bctbx_mutex_unlock(&ml->sources_mutex);
 
 	/* Step 4: notify those to be notified */
 	for(elem=to_be_notified;elem!=NULL;){
-		s=(belle_sip_source_t*)elem->data;
+		belle_sip_source_t *s=(belle_sip_source_t*)elem->data;
 		next=elem->next;
 		if (!s->cancelled){
 
@@ -633,11 +692,10 @@ static void belle_sip_main_loop_iterate(belle_sip_main_loop_t *ml){
 				/*this source needs to be removed*/
 				belle_sip_main_loop_remove_source(ml,s);
 			} else  {
+				bctbx_mutex_lock(&ml->sources_mutex);
 				if (s->expired && s->it) {
-					bctbx_mutex_lock(&ml->timer_sources_mutex);
 					bctbx_map_erase(ml->timer_sources, s->it);
 					bctbx_iterator_delete(s->it);
-					bctbx_mutex_unlock(&ml->timer_sources_mutex);
 					s->it=NULL;
 					belle_sip_object_unref(s);
 				}
@@ -649,12 +707,11 @@ static void belle_sip_main_loop_iterate(belle_sip_main_loop_t *ml){
 						s->expire_ms+=s->timeout;
 					}
 					s->expired=FALSE;
-					bctbx_mutex_lock(&ml->timer_sources_mutex);
 					s->it = bctbx_map_insert_and_delete_with_returned_it(ml->timer_sources,
 							(bctbx_pair_t*)bctbx_pair_ullong_new(s->expire_ms, s));
-					bctbx_mutex_unlock(&ml->timer_sources_mutex);
 					belle_sip_object_ref(s);
 				}
+				bctbx_mutex_unlock(&ml->sources_mutex);
 			}
 		} else {
 			belle_sip_main_loop_remove_source(ml,s);
@@ -670,8 +727,8 @@ static void belle_sip_main_loop_iterate(belle_sip_main_loop_t *ml){
 		belle_sip_object_unref(tmp_pool);
 		tmp_pool=NULL;
 	}
-end:
 
+end:
 	belle_sip_free(pfd);
 }
 
@@ -697,17 +754,7 @@ int belle_sip_main_loop_quit(belle_sip_main_loop_t *ml){
 }
 
 void belle_sip_main_loop_sleep(belle_sip_main_loop_t *ml, int milliseconds){
-	/* FIXME: Temporary workaround for -Wcast-function-type. */
-	#if __GNUC__ >= 8
-		_Pragma("GCC diagnostic push")
-		_Pragma("GCC diagnostic ignored \"-Wcast-function-type\"")
-	#endif // if __GNUC__ >= 8
-
 	belle_sip_source_t * s=belle_sip_main_loop_create_timeout(ml,(belle_sip_source_func_t)belle_sip_main_loop_quit,ml,milliseconds,"Main loop sleep timer");
-
-	#if __GNUC__ >= 8
-		_Pragma("GCC diagnostic pop")
-	#endif // if __GNUC__ >= 8
 
 	belle_sip_main_loop_run(ml);
 	belle_sip_main_loop_remove_source(ml,s);

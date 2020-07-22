@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "belle_sip_internal.h"
 #include "listeningpoint_internal.h"
@@ -44,6 +45,7 @@ GET_SET_STRING(authorization_context,opaque)
 GET_SET_STRING(authorization_context,user_id)
 GET_SET_STRING(authorization_context,algorithm)
 GET_SET_INT(authorization_context,nonce_count,int)
+
 static authorization_context_t* belle_sip_authorization_create(belle_sip_header_call_id_t* call_id) {
 	authorization_context_t* result = malloc(sizeof(authorization_context_t));
 	memset(result,0,sizeof(authorization_context_t));
@@ -51,6 +53,7 @@ static authorization_context_t* belle_sip_authorization_create(belle_sip_header_
 	belle_sip_object_ref(result->callid);
 	return result;
 }
+
 void belle_sip_authorization_destroy(authorization_context_t* object) {
 	DESTROY_STRING(object,scheme);
 	DESTROY_STRING(object,realm);
@@ -61,6 +64,10 @@ void belle_sip_authorization_destroy(authorization_context_t* object) {
 	DESTROY_STRING(object,algorithm);
 	belle_sip_object_unref(object->callid);
 	belle_sip_free(object);
+}
+
+const char *belle_sip_authorization_get_algorithm(const belle_sip_authorization_t* object) {
+	return authorization_context_get_algorithm(object);
 }
 
 static void finalize_transaction(belle_sip_transaction_t *tr){
@@ -182,7 +189,7 @@ static belle_sip_list_t*  belle_sip_provider_get_auth_context_by_realm_or_call_i
 
 static int belle_sip_auth_context_find_by_nonce(const void* elem, const void* nonce_value){
 	authorization_context_t * a = (authorization_context_t*)elem;
-
+	if (a->nonce == NULL) return -1;
 	return strcmp(a->nonce, (const char*)nonce_value);
 }
 
@@ -873,6 +880,16 @@ void belle_sip_provider_clean_channels(belle_sip_provider_t *p){
 	}
 }
 
+void belle_sip_provider_clean_unreliable_channels(belle_sip_provider_t *p){
+	belle_sip_list_t *l;
+	belle_sip_listening_point_t *lp;
+
+	for(l=p->lps;l!=NULL;l=l->next){
+		lp=(belle_sip_listening_point_t*)l->data;
+		belle_sip_listening_point_clean_unreliable_channels(lp);
+	}
+}
+
 void belle_sip_provider_send_request(belle_sip_provider_t *p, belle_sip_request_t *req){
 	belle_sip_hop_t* hop;
 	belle_sip_channel_t *chan;
@@ -951,8 +968,17 @@ belle_sip_client_transaction_t * belle_sip_provider_find_matching_client_transac
 		belle_sip_warning("Response has no cseq.");
 		return NULL;
 	}
-	matcher.branchid=belle_sip_header_via_get_branch(via);
-	matcher.method=belle_sip_header_cseq_get_method(cseq);
+	matcher.branchid = belle_sip_header_via_get_branch(via);
+	matcher.method = belle_sip_header_cseq_get_method(cseq);
+	if (matcher.branchid == NULL) {
+		belle_sip_warning("Response has no branch in via.");
+		return NULL;
+	}
+	if (matcher.method == NULL){
+		/* Maybe a bit paranoid, the parser should reject this.*/
+		belle_sip_warning("Response has missing method in cseq.");
+		return NULL;
+	}
 	elem=belle_sip_list_find_custom(prov->client_transactions,client_transaction_match,&matcher);
 	if (elem){
 		ret=(belle_sip_client_transaction_t*)elem->data;
@@ -1000,7 +1026,7 @@ belle_sip_transaction_t * belle_sip_provider_find_matching_transaction(belle_sip
 	belle_sip_transaction_t *ret=NULL;
 	belle_sip_list_t *elem=NULL;
 	const char *branch;
-	char token[BELLE_SIP_BRANCH_ID_LENGTH];
+	char token[BELLE_SIP_BRANCH_ID_LENGTH] = {0};
 
 
 	matcher.method=belle_sip_request_get_method(req);

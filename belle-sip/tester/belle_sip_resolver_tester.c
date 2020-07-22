@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-    Copyright (C) 2010-2013  Belledonne Communications SARL
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 2 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "belle-sip/belle-sip.h"
 #include "belle_sip_internal.h"
@@ -24,7 +25,7 @@
 #define IPV4_SIP_DOMAIN		"sip.linphone.org"
 #define IPV4_SIP_IP		"91.121.209.194"
 #define IPV4_CNAME		"stun.linphone.org"
-#define IPV4_CNAME_IP		"37.59.51.72"
+#define IPV4_CNAME_IP		"54.37.202.229"
 #define IPV4_SIP_BAD_DOMAIN	"dummy.linphone.org"
 #define IPV4_MULTIRES_DOMAIN	"yahoo.fr"
 
@@ -89,7 +90,7 @@ static void destroy_endpoint(endpoint_t *endpoint) {
 
 static void a_resolve_done(void *data, belle_sip_resolver_results_t *results) {
 	endpoint_t *client = (endpoint_t *)data;
-	
+
 	client->resolve_done = 1;
 	belle_sip_object_ref(results);
 	client->results = results;

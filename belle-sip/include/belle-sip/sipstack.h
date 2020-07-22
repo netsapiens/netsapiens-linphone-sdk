@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #ifndef belle_sip_stack_h
 #define belle_sip_stack_h
@@ -29,6 +30,19 @@ struct belle_sip_timer_config{
 typedef struct belle_sip_timer_config belle_sip_timer_config_t;
 
 BELLE_SIP_BEGIN_DECLS
+
+/**
+ * This only affects the resolution of SIP URI in absence of port number, and in absence of SRV record for the SIP domain. The well known ports (udp/tcp and tls/dtls) are static.
+ * @param well known port value
+**/
+BELLESIP_EXPORT void belle_sip_stack_set_well_known_port (int value);
+
+BELLESIP_EXPORT void belle_sip_stack_set_well_known_port_tls (int value);
+
+
+BELLESIP_EXPORT int belle_sip_stack_get_well_known_port (void);
+
+BELLESIP_EXPORT int belle_sip_stack_get_well_known_port_tls (void);
 
 BELLESIP_EXPORT belle_sip_stack_t * belle_sip_stack_new(const char *properties);
 
@@ -105,8 +119,25 @@ BELLESIP_EXPORT int belle_sip_stack_get_inactive_transport_timeout(const belle_s
 
 /**
  * Sets the time interval in seconds after which a connection must be closed when inactive.
+ * By inactive, it is meant that the connection hasn't been used to send or recv data.
 **/
 BELLESIP_EXPORT void belle_sip_stack_set_inactive_transport_timeout(belle_sip_stack_t *stack, int seconds);
+
+
+/**
+ * Set the time interval in seconds after which a connection is considered to be unreliable because
+ * no data was received over it.
+ * The special value 0 means that a connection will never be considered as unreliable.
+ * See belle_sip_provider_clean_unreliable_channels().
+ */
+BELLESIP_EXPORT void belle_sip_stack_set_unreliable_connection_timeout(belle_sip_stack_t *stack, int seconds);
+
+/**
+ * Get the time interval in seconds after which a connection is considered to be unreliable because
+ * no data was received over it.
+ * See belle_sip_provider_clean_unreliable_channels().
+ */
+BELLESIP_EXPORT int belle_sip_stack_get_unreliable_connection_timeout(const belle_sip_stack_t *stack);
 
 
 /**

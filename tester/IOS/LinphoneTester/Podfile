@@ -6,7 +6,7 @@ target 'LinphoneTester' do
   use_frameworks!
 
   # Pods for LinphoneTester
-  pod 'linphone-sdk', :path => "/Users/alighterink/Development/SNAPmobile-iOS/buildSDK/"
+  pod 'linphone-sdk', :path => "/Users/alighterink/Development/SDK_Linphone/netsapiens-linphone-sdk/build/"
 
   target 'LinphoneTesterTests' do
     inherit! :search_paths

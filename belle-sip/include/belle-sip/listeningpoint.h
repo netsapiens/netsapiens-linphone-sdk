@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #ifndef BELLE_SIP_TRANSPORT_H
 #define BELLE_SIP_TRANSPORT_H
@@ -35,7 +36,12 @@ BELLESIP_EXPORT const char *belle_sip_listening_point_get_ip_address(const  bell
  * @param lp object
  * @param ms keep alive period in ms. Values <=0 disable keep alive
  * */
-BELLESIP_EXPORT void belle_sip_listening_point_set_keep_alive(belle_sip_listening_point_t *lp,int ms);
+BELLESIP_EXPORT void belle_sip_listening_point_set_keep_alive(belle_sip_listening_point_t *lp, int ms);
+/*
+ * sends a keep alive right away
+ * @param lp object
+ * */
+BELLESIP_EXPORT void belle_sip_listening_point_send_keep_alive(belle_sip_listening_point_t *lp);
 
 /*
  * get keep alive frequency in ms
@@ -56,6 +62,12 @@ BELLESIP_EXPORT int belle_sip_listening_point_is_reliable(const belle_sip_listen
  * Clean (close) all channels (connection) managed by this listening point.
 **/
 BELLESIP_EXPORT void belle_sip_listening_point_clean_channels(belle_sip_listening_point_t *lp);
+
+/*
+ * Clean unreliable channels.
+ * See belle_sip_provider_clean_unreliable_channels() for a detailed explanation.
+ */
+BELLESIP_EXPORT void belle_sip_listening_point_clean_unreliable_channels(belle_sip_listening_point_t *lp);
 
 /**
  * Get the number of channels managed by this listening point.

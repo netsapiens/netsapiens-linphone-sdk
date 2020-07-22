@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #ifndef belle_sip_provider_h
 #define belle_sip_provider_h
@@ -54,6 +55,15 @@ BELLESIP_EXPORT void belle_sip_provider_send_request(belle_sip_provider_t *p, be
 BELLESIP_EXPORT void belle_sip_provider_send_response(belle_sip_provider_t *p, belle_sip_response_t *resp);
 
 BELLESIP_EXPORT void belle_sip_provider_clean_channels(belle_sip_provider_t *p);
+
+/* Close connections for which no data was received at all during last X seconds period of time.
+ * This is useful because some routers don't send ICMP or TCP connection reset when they reallocate a port.
+ * For the client, the connection is presumed to be alive, but in practice it is not and there will never be any error.
+ * As a workaround, simply close these connections, and let the stack re-establish new ones, while refreshing registration for example.
+ * The time period after which a channel is considered as "unreliable" is configured with
+ * belle_sip_stack_set_unreliable_connection_timeout(belle_sip_stack_t *stack);
+ */
+BELLESIP_EXPORT void belle_sip_provider_clean_unreliable_channels(belle_sip_provider_t *p);
 
 /**
  * Add auth info to the request if found

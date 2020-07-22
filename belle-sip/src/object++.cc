@@ -1,23 +1,28 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2019  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "belle-sip/object++.hh"
 #include "belle_sip_internal.h"
+
+#ifdef __GNUC__
+#include <cxxabi.h>
+#endif
 
 namespace bellesip {
 
@@ -28,6 +33,23 @@ public:
 	}
 	static void doDelete(belle_sip_object_t* obj) {
 		delete Object::getCppObject(obj);
+	}
+	static const char* getTypeName(const belle_sip_object_t *obj){
+		static thread_local std::string readableTypeName;
+		const Object *cppObject = Object::getCppObject(obj);
+#ifdef __GNUC__
+		int status = 0;
+		char *tmp = abi::__cxa_demangle(typeid(*cppObject).name(), 0, 0, &status);
+		if (status != 0){
+#endif
+			readableTypeName = typeid(*cppObject).name();
+#ifdef __GNUC__
+		}else{
+			readableTypeName = tmp;
+			free(tmp);
+		}
+#endif
+		return readableTypeName.c_str();
 	}
 };
 
@@ -57,10 +79,15 @@ Object::~Object(){
 		belle_sip_fatal("bellesip::Object [%p] has been destroyed directly with delete operator. This is prohibited, use unref() instead.", this);
 	}
 	belle_sip_object_uninit(&mObject);
-	belle_sip_message("Object destroyed [%p]", &mObject);
+	belle_sip_debug("Object destroyed [%p]", &mObject);
 }
 
 Object *Object::ref(){
+	belle_sip_object_ref(&mObject);
+	return this;
+}
+
+const Object *Object::ref() const{
 	belle_sip_object_ref(&mObject);
 	return this;
 }
@@ -69,12 +96,12 @@ void Object::unref(){
 	belle_sip_object_unref(&mObject);
 }
 
+void Object::constUnref()const{
+	belle_sip_object_unref(&mObject);
+}
+
 std::string Object::toString() const {
-	std::ostringstream ss;
-	ss << "bellesip::Object. cObject(";
-	ss << static_cast<const void *>(&mObject);
-	ss << ")";
-	return ss.str();
+	return std::string();
 }
 
 belle_sip_error_code Object::marshal(char* buff, size_t buff_size, size_t *offset){
@@ -113,6 +140,10 @@ const Object *Object::getCppObject(const void *ptr){
 
 void belle_sip_cpp_object_delete(belle_sip_object_t *obj){
 	bellesip::ObjectCAccessors::doDelete(obj);
+}
+
+const char * belle_sip_cpp_object_get_type_name(const belle_sip_object_t *obj){
+	return bellesip::ObjectCAccessors::getTypeName(obj);
 }
 
 BELLE_SIP_DECLARE_NO_IMPLEMENTED_INTERFACES(belle_sip_cpp_object_t);

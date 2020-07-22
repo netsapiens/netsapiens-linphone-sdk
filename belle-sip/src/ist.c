@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 /**
  * INVITE server transaction implementation.
@@ -56,10 +57,10 @@ static int ist_on_timer_G(belle_sip_ist_t *obj){
 	belle_sip_transaction_t *base=(belle_sip_transaction_t*)obj;
 	if (base->state==BELLE_SIP_TRANSACTION_COMPLETED){
 		const belle_sip_timer_config_t *cfg=belle_sip_transaction_get_timer_config(base);
-		int interval=belle_sip_source_get_timeout(obj->timer_G);
+		int64_t interval=belle_sip_source_get_timeout_int64(obj->timer_G);
 
 		belle_sip_channel_queue_message(base->channel,(belle_sip_message_t*)base->last_response);
-		belle_sip_source_set_timeout(obj->timer_G,MIN(2*interval,cfg->T2));
+		belle_sip_source_set_timeout_int64(obj->timer_G,MIN(2*interval,cfg->T2));
 		return BELLE_SIP_CONTINUE;
 	}
 	return BELLE_SIP_STOP;
@@ -104,17 +105,7 @@ int belle_sip_ist_process_ack(belle_sip_ist_t *obj, belle_sip_message_t *ack){
 			if (!belle_sip_channel_is_reliable(base->channel)){
 				const belle_sip_timer_config_t *cfg=belle_sip_transaction_get_timer_config(base);
 
-				/* FIXME: Temporary workaround for -Wcast-function-type. */
-				#if __GNUC__ >= 8
-					_Pragma("GCC diagnostic push")
-					_Pragma("GCC diagnostic ignored \"-Wcast-function-type\"")
-				#endif // if __GNUC__ >= 8
-
 				obj->timer_I=belle_sip_timeout_source_new((belle_sip_source_func_t)ist_on_timer_I,obj,cfg->T4);
-
-				#if __GNUC__ >= 8
-					_Pragma("GCC diagnostic pop")
-				#endif // if __GNUC__ >= 8
 
 				belle_sip_transaction_start_timer(base,obj->timer_I);
 			}else ist_on_timer_I(obj);
@@ -135,12 +126,6 @@ static int ist_send_new_response(belle_sip_ist_t *obj, belle_sip_response_t *res
 	switch(base->state){
 		case BELLE_SIP_TRANSACTION_PROCEEDING:
 			{
-				/* FIXME: Temporary workaround for -Wcast-function-type. */
-				#if __GNUC__ >= 8
-					_Pragma("GCC diagnostic push")
-					_Pragma("GCC diagnostic ignored \"-Wcast-function-type\"")
-				#endif // if __GNUC__ >= 8
-
 				const belle_sip_timer_config_t *cfg=belle_sip_transaction_get_timer_config(base);
 				ret=0;
 				belle_sip_channel_queue_message(base->channel,(belle_sip_message_t*)resp);
@@ -157,10 +142,6 @@ static int ist_send_new_response(belle_sip_ist_t *obj, belle_sip_response_t *res
 					obj->timer_H=belle_sip_timeout_source_new((belle_sip_source_func_t)ist_on_timer_H,obj,64*cfg->T1);
 					belle_sip_transaction_start_timer(base,obj->timer_H);
 				}
-
-				#if __GNUC__ >= 8
-					_Pragma("GCC diagnostic pop")
-				#endif // if __GNUC__ >= 8
 			}
 		break;
 		case BELLE_SIP_TRANSACTION_ACCEPTED:

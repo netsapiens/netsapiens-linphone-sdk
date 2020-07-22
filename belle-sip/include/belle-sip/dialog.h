@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #ifndef belle_sip_dialog_h
 #define belle_sip_dialog_h
@@ -77,7 +78,7 @@ BELLESIP_EXPORT const belle_sip_header_address_t *belle_sip_dialog_get_remote_pa
  **/
 BELLESIP_EXPORT unsigned int belle_sip_dialog_get_local_seq_number(const belle_sip_dialog_t *dialog);
 
-unsigned int belle_sip_dialog_get_remote_seq_number(const belle_sip_dialog_t *dialog);
+BELLESIP_EXPORT unsigned int belle_sip_dialog_get_remote_seq_number(const belle_sip_dialog_t *dialog);
 
 BELLESIP_EXPORT const char *belle_sip_dialog_get_local_tag(const belle_sip_dialog_t *dialog);
 

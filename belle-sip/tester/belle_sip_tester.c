@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -30,7 +31,6 @@ extern const char *auth_domain;
 
 static char* all_leaks_buffer = NULL;
 static const char *belle_sip_tester_root_ca_path = NULL;
-static FILE * log_file = NULL;
 
 static belle_sip_object_pool_t *pool;
 
@@ -82,32 +82,26 @@ static void log_handler(int lev, const char *fmt, va_list args) {
 	fprintf(lev == BELLE_SIP_LOG_ERROR ? stderr : stdout, "\n");
 	va_end(cap);
 #endif
-	if (log_file){
-		belle_sip_logv(BELLE_SIP_LOG_DOMAIN,lev, fmt, args);
-	}
+
+	belle_sip_logv(BELLE_SIP_LOG_DOMAIN,lev, fmt, args);
 }
 
 int belle_sip_tester_set_log_file(const char *filename) {
-	bctbx_log_handler_t *filehandler;
-	char* dir;
-	char* base;
-
-	if (log_file) {
-		fclose(log_file);
-	}
-	log_file = fopen(filename, "w");
-	if (!log_file) {
-		belle_sip_error("Cannot open file [%s] for writing logs because [%s]", filename, strerror(errno));
-		return -1;
-	}
-	dir = bctbx_dirname(filename);
-	base = bctbx_basename(filename);
+	int res = 0;
+	char *dir = bctbx_dirname(filename);
+	char *base = bctbx_basename(filename);
 	belle_sip_message("Redirecting traces to file [%s]", filename);
-	filehandler = bctbx_create_file_log_handler(0, dir, base, log_file);
+	bctbx_log_handler_t *filehandler = bctbx_create_file_log_handler(0, dir, base);
+	if (filehandler == NULL) {
+		res = -1;
+		goto end;
+	}
 	bctbx_add_log_handler(filehandler);
-	if (dir) bctbx_free(dir);
-	if (base) bctbx_free(base);
-	return 0;
+
+end:
+	bctbx_free(dir);
+	bctbx_free(base);
+	return res;
 }
 
 int silent_arg_func(const char *arg) {

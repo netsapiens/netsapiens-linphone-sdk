@@ -309,7 +309,7 @@ uric_no_slash_for_from_to_contact_addr_spec
 uric_no_slash
 	:COMMA | SEMI | QMARK  | uric_no_slash_for_from_to_contact_addr_spec ;
 
- scheme: alpha ( alphanum | PLUS | DASH | DOT | USCORE )*;
+scheme: alpha ( alphanum | PLUS | DASH | DOT | USCORE )*;
 
 /*remove hiearachy part because complex to handle the :comma, semicolon, or question
    markexception see rfc3261 section 20.10 Contact*/
@@ -1407,9 +1407,12 @@ via_params
 via_maddr
   :   'maddr' EQUAL host;*/
 via_received [belle_sip_header_via_t* object]
-  : {IS_TOKEN(received)}? token EQUAL via_address {belle_sip_header_via_set_received(object,(const char*)$via_address.text->chars);};
+  : {IS_TOKEN(received)}? token EQUAL via_address {belle_sip_header_via_set_received(object,(const char*)$via_address.ret);};
 
-via_address: ipv4address | ipv6address;
+via_address returns [const char* ret=NULL]
+  :   ipv4address {$ret=(const char*)$ipv4address.text->chars;}
+      | ipv6address {$ret=(const char *)$ipv6address.text->chars;}
+      | ipv6reference {$ret=(const char*)$ipv6reference.ret;} ;
 /*
 via_branch
   :   'branch' EQUAL token;
@@ -1546,7 +1549,26 @@ catch [ANTLR3_RECOGNITION_EXCEPTION]
 }
 supported_val: token {belle_sip_header_supported_add_supported($header_supported::current,(const char*)$token.text->chars);};
 
+//**********************************Session-Expires*******************************//
+
+header_session_expires returns [belle_sip_header_session_expires_t* ret]
+scope { belle_sip_header_session_expires_t* current; }
+
+@init {
+  $header_session_expires::current = belle_sip_header_session_expires_new();
+  $ret = $header_session_expires::current;
+} : {IS_TOKEN(Session-Expires)}? token /*"Session-Expires"*/ hcolon delta_seconds {
+  belle_sip_header_session_expires_set_delta($header_session_expires::current, atoi((const char *)$delta_seconds.text->chars));
+} (semi generic_param [BELLE_SIP_PARAMETERS($header_session_expires::current)])*;
+catch [ANTLR3_RECOGNITION_EXCEPTION]
+{
+  belle_sip_message("[\%s] reason [\%s]", (const char*)EXCEPTION->name,(const char*)EXCEPTION->message);
+  belle_sip_object_unref($header_session_expires::current);
+  $ret=NULL;
+}
+
 //**********************************Require*******************************//
+
 header_require  returns [belle_sip_header_require_t* ret]
 scope { belle_sip_header_require_t* current; }
 @init { $header_require::current = belle_sip_header_require_new();$ret = $header_require::current;}

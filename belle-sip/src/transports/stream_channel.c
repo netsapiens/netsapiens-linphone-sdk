@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "belle_sip_internal.h"
 #include "belle-sip/mainloop.h"
@@ -167,7 +168,7 @@ int stream_channel_connect(belle_sip_stream_channel_t *obj, const struct addrinf
 	}
 	belle_sip_channel_set_socket((belle_sip_channel_t*)obj,sock,(belle_sip_source_func_t)stream_channel_process_data);
 	belle_sip_source_set_events((belle_sip_source_t*)obj,BELLE_SIP_EVENT_READ|BELLE_SIP_EVENT_WRITE|BELLE_SIP_EVENT_ERROR);
-	belle_sip_source_set_timeout((belle_sip_source_t*)obj,belle_sip_stack_get_transport_timeout(obj->base.stack));
+	belle_sip_source_set_timeout_int64((belle_sip_source_t*)obj,belle_sip_stack_get_transport_timeout(obj->base.stack));
 	belle_sip_main_loop_add_source(obj->base.stack->ml,(belle_sip_source_t*)obj);
 	return 0;
 }
@@ -251,10 +252,11 @@ static int stream_channel_process_data(belle_sip_stream_channel_t *obj,unsigned 
 			return BELLE_SIP_STOP;
 		}
 		belle_sip_source_set_events((belle_sip_source_t*)obj,BELLE_SIP_EVENT_READ|BELLE_SIP_EVENT_ERROR);
-		belle_sip_source_set_timeout((belle_sip_source_t*)obj,-1);
+		belle_sip_source_set_timeout_int64((belle_sip_source_t*)obj,-1);
 		belle_sip_channel_set_ready(base,(struct sockaddr*)&ss,addrlen);
 		return BELLE_SIP_CONTINUE;
-	} else if (state == BELLE_SIP_CHANNEL_READY) {
+	} else if (state == BELLE_SIP_CHANNEL_READY || state == BELLE_SIP_CHANNEL_RES_IN_PROGRESS) {
+		/* Because of DNS TTL timeout, the channel may enter the RES_IN_PROGRESS state temporarily while being connected.*/
 		return belle_sip_channel_process_data(base,revents);
 	} else {
 		belle_sip_error("Unexpected event [%i], in state [%s] for channel [%p]",revents,belle_sip_channel_state_to_string(state),obj);

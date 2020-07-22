@@ -66,8 +66,8 @@ bc_apply_compile_flags(SOURCE_FILES_OBJC STRICT_OPTIONS_CPP STRICT_OPTIONS_OBJC)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
 	add_library(belle_sip_tester_static STATIC ${SOURCE_FILES_C})
-	target_include_directories(belle_sip_tester_static PUBLIC ${BCTOOLBOX_TESTER_INCLUDE_DIRS})
-	target_link_libraries(belle_sip_tester_static ${BCTOOLBOX_LIBRARIES} ${PROJECT_LIBS})
+#	target_include_directories(belle_sip_tester_static PUBLIC ${BCTOOLBOX_TESTER_INCLUDE_DIRS})
+	target_link_libraries(belle_sip_tester_static bctoolbox bctoolbox-tester ${PROJECT_LIBS})
 
 	set(RUNTIME_COMPONENT_SOURCES
 		belle_sip_tester_windows.cpp
@@ -79,6 +79,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
 	set_target_properties(belle_sip_tester_runtime PROPERTIES LIBRARY_OUTPUT_NAME "BelledonneCommunications.BelleSip.Tester")
 	set_target_properties(belle_sip_tester_runtime PROPERTIES LINK_FLAGS "/WINMDFILE:BelledonneCommunications.BelleSip.Tester.winmd")
 	set_target_properties(belle_sip_tester_runtime PROPERTIES CXX_STANDARD 11 CXX_STANDARD_REQUIRED ON)
+	set_target_properties(belle_sip_tester_runtime PROPERTIES C_STANDARD 99)
+
 
 	install(TARGETS belle_sip_tester_runtime
 		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -102,6 +104,7 @@ else()
 	add_executable(belle_sip_tester ${USE_BUNDLE} ${SOURCE_FILES_C} ${SOURCE_FILES_OBJC})
 	set_target_properties(belle_sip_tester PROPERTIES LINKER_LANGUAGE CXX)
 	set_target_properties(belle_sip_tester PROPERTIES CXX_STANDARD 11 CXX_STANDARD_REQUIRED ON)
+	set_target_properties(belle_sip_tester PROPERTIES C_STANDARD 99)
 
 	if(NOT "${LINK_FLAGS_STR}" STREQUAL "")
 		set_target_properties(belle_sip_tester PROPERTIES LINK_FLAGS "${LINK_FLAGS_STR}")
@@ -109,8 +112,7 @@ else()
 	if(WIN32)
 		target_link_libraries(belle_sip_tester "Ws2_32")
 	endif()
-	target_include_directories(belle_sip_tester PUBLIC ${BCTOOLBOX_TESTER_INCLUDE_DIRS})
-	target_link_libraries(belle_sip_tester ${BCTOOLBOX_LIBRARIES} ${PROJECT_LIBS})
+	target_link_libraries(belle_sip_tester bctoolbox bctoolbox-tester ${PROJECT_LIBS})
 	add_test(NAME belle_sip_tester COMMAND belle_sip_tester --verbose)
 	if(NOT IOS)
 		install(TARGETS belle_sip_tester
@@ -129,7 +131,7 @@ else()
 	if(NOT "${LINK_FLAGS_STR}" STREQUAL "")
 		set_target_properties(belle_sip_object_describe PROPERTIES LINK_FLAGS "${LINK_FLAGS_STR}")
 	endif()
-	target_link_libraries(belle_sip_object_describe ${BCTOOLBOX_CORE_LIBRARIES} ${PROJECT_LIBS})
+	target_link_libraries(belle_sip_object_describe bctoolbox ${PROJECT_LIBS})
 
 	set(OBJECT_RESOLVE_SOURCES resolve.c)
 	bc_apply_compile_flags(OBJECT_DESCRIBE_SOURCES STRICT_OPTIONS_CPP STRICT_OPTIONS_C)
@@ -138,8 +140,7 @@ else()
 	if(NOT "${LINK_FLAGS_STR}" STREQUAL "")
 		set_target_properties(belle_sip_resolve PROPERTIES LINK_FLAGS "${LINK_FLAGS_STR}")
 	endif()
-	target_link_libraries(belle_sip_resolve ${BCTOOLBOX_CORE_LIBRARIES} ${PROJECT_LIBS})
-
+	target_link_libraries(belle_sip_resolve bctoolbox ${PROJECT_LIBS})
 
 	set(PARSE_SOURCES parse.c)
 
@@ -149,7 +150,17 @@ else()
 	if(NOT "${LINK_FLAGS_STR}" STREQUAL "")
 		set_target_properties(belle_sip_parse PROPERTIES LINK_FLAGS "${LINK_FLAGS_STR}")
 	endif()
-	target_link_libraries(belle_sip_parse ${BCTOOLBOX_CORE_LIBRARIES} ${PROJECT_LIBS})
+	target_link_libraries(belle_sip_parse bctoolbox ${PROJECT_LIBS})
+
+	set(GET_SOURCES get.c)
+
+	bc_apply_compile_flags(GET_SOURCES STRICT_OPTIONS_CPP STRICT_OPTIONS_C)
+	add_executable(belle_sip_http_get ${USE_BUNDLE} ${GET_SOURCES})
+	set_target_properties(belle_sip_http_get PROPERTIES LINKER_LANGUAGE CXX)
+	if(NOT "${LINK_FLAGS_STR}" STREQUAL "")
+		set_target_properties(belle_sip_http_get PROPERTIES LINK_FLAGS "${LINK_FLAGS_STR}")
+	endif()
+	target_link_libraries(belle_sip_http_get bctoolbox ${PROJECT_LIBS})
 
 endif()
 

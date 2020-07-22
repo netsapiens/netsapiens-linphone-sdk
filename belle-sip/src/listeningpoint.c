@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "belle_sip_internal.h"
 
@@ -94,6 +95,31 @@ void belle_sip_listening_point_clean_channels(belle_sip_listening_point_t *lp){
 	lp->channels=belle_sip_list_free_with_data(lp->channels,(void (*)(void*))belle_sip_object_unref);
 }
 
+void belle_sip_listening_point_clean_unreliable_channels(belle_sip_listening_point_t *lp){
+	belle_sip_list_t* iterator;
+	uint64_t current_time = belle_sip_time_ms();
+	int count = 0;
+	
+	if (lp->stack->unreliable_transport_timeout <= 0) return;
+	
+	for (iterator = lp->channels; iterator!=NULL ; ) {
+		belle_sip_channel_t *chan=(belle_sip_channel_t*)iterator->data;
+		belle_sip_list_t * next_iterator = iterator->next;
+		if (chan->state == BELLE_SIP_CHANNEL_READY) {
+			if (current_time - chan->last_recv_time > (uint64_t)(lp->stack->unreliable_transport_timeout * 1000)){
+				belle_sip_channel_force_close(chan);
+				belle_sip_object_unref(chan);
+				count++;
+				lp->channels = bctbx_list_erase_link(lp->channels, iterator);
+			}
+		}
+		iterator = next_iterator;
+	}
+	if (count > 0){
+		belle_sip_message("belle_sip_listening_point_clean_unreliable_channels() has closed [%i] channels.", count); 
+	}
+}
+
 int belle_sip_listening_point_get_channel_count(const belle_sip_listening_point_t *lp){
 	return (int)belle_sip_list_size(lp->channels);
 }
@@ -129,10 +155,18 @@ const belle_sip_uri_t* belle_sip_listening_point_get_uri(const  belle_sip_listen
 	return lp->listening_uri;
 }
 int belle_sip_listening_point_get_well_known_port(const char *transport){
-	if (strcasecmp(transport,"UDP")==0 || strcasecmp(transport,"TCP")==0 ) return 5060;
-	if (strcasecmp(transport,"DTLS")==0 || strcasecmp(transport,"TLS")==0 ) return 5061;
-	belle_sip_error("No well known port for transport %s", transport);
-	return -1;
+	int well_known_port = belle_sip_stack_get_well_known_port();
+	int tls_well_known_port = belle_sip_stack_get_well_known_port_tls();
+	if (strcasecmp(transport,"UDP")==0 || strcasecmp(transport,"TCP")==0 ){
+		return well_known_port;
+
+	} else if (strcasecmp(transport,"DTLS")==0 || strcasecmp(transport,"TLS")==0 ){
+		return tls_well_known_port;
+	}
+	else {
+		belle_sip_error("belle_sip_listening_point_get_well_known_port() : Not valid transport value : %s", transport);
+		return -1;
+	}
 }
 
 belle_sip_channel_t *_belle_sip_listening_point_get_channel(belle_sip_listening_point_t *lp, const belle_sip_hop_t *hop, const struct addrinfo *addr){
@@ -168,28 +202,35 @@ static int send_keep_alive(belle_sip_channel_t* obj) {
 		return 0;
 	}
 }
-static int keep_alive_timer_func(void *user_data, unsigned int events) {
-	belle_sip_listening_point_t* lp=(belle_sip_listening_point_t*)user_data;
-	belle_sip_list_t* iterator;
-	belle_sip_channel_t* channel;
-	belle_sip_list_t *to_be_closed=NULL;
 
-	for (iterator=lp->channels;iterator!=NULL;iterator=iterator->next) {
-		channel=(belle_sip_channel_t*)iterator->data;
-		if (channel->state == BELLE_SIP_CHANNEL_READY && send_keep_alive(channel)==-1) { /*only send keep alive if ready*/
-			to_be_closed=belle_sip_list_append(to_be_closed,channel);
+void belle_sip_listening_point_send_keep_alive(belle_sip_listening_point_t *lp) {
+	belle_sip_list_t *iterator;
+	belle_sip_channel_t *channel;
+	belle_sip_list_t *to_be_closed = NULL;
+
+	for (iterator = lp->channels; iterator != NULL; iterator = iterator->next) {
+		channel = (belle_sip_channel_t*)iterator->data;
+		if (channel->state == BELLE_SIP_CHANNEL_READY && channel->out_state == OUTPUT_STREAM_IDLE && send_keep_alive(channel) == -1) { /*only send keep alive if ready*/
+			to_be_closed = belle_sip_list_append(to_be_closed, channel);
 		}
 	}
-	for (iterator=to_be_closed;iterator!=NULL;iterator=iterator->next){
-		channel=(belle_sip_channel_t*)iterator->data;
-		channel_set_state(channel,BELLE_SIP_CHANNEL_ERROR);
+
+	for (iterator = to_be_closed; iterator != NULL; iterator = iterator->next) {
+		channel = (belle_sip_channel_t*)iterator->data;
+		channel_set_state(channel, BELLE_SIP_CHANNEL_ERROR);
 		belle_sip_channel_close(channel);
 	}
+
 	belle_sip_list_free(to_be_closed);
+}
+
+static int keep_alive_timer_func(void *user_data, unsigned int events) {
+	belle_sip_listening_point_t* lp=(belle_sip_listening_point_t*)user_data;
+	belle_sip_listening_point_send_keep_alive(lp);
 	return BELLE_SIP_CONTINUE_WITHOUT_CATCHUP;
 }
 
-void belle_sip_listening_point_set_keep_alive(belle_sip_listening_point_t *lp,int ms) {
+void belle_sip_listening_point_set_keep_alive(belle_sip_listening_point_t *lp, int ms) {
 	if (ms <=0) {
 		if (lp->keep_alive_timer) {
 			belle_sip_main_loop_remove_source(lp->stack->ml,lp->keep_alive_timer);
@@ -206,13 +247,13 @@ void belle_sip_listening_point_set_keep_alive(belle_sip_listening_point_t *lp,in
 			, ms
 			,"keep alive") ;
 	} else {
-		belle_sip_source_set_timeout(lp->keep_alive_timer,ms);
+		belle_sip_source_set_timeout_int64(lp->keep_alive_timer,ms);
 	}
 	return;
 }
 
 int belle_sip_listening_point_get_keep_alive(const belle_sip_listening_point_t *lp) {
-	return lp->keep_alive_timer?(int)belle_sip_source_get_timeout(lp->keep_alive_timer):-1;
+	return lp->keep_alive_timer?(int)belle_sip_source_get_timeout_int64(lp->keep_alive_timer):-1;
 }
 
 void belle_sip_listening_point_set_channel_listener(belle_sip_listening_point_t *lp,belle_sip_channel_listener_t* channel_listener) {

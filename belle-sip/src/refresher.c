@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <bctoolbox/defs.h>
 
@@ -45,6 +46,7 @@ struct belle_sip_refresher {
 	belle_sip_dialog_t* dialog; /*Cannot rely on transaction to store dialog because of belle_sip_transaction_reset_dialog*/
 	char* realm;
 	int target_expires;
+	int session_expires;
 	int obtained_expires;
 	belle_sip_refresher_state_t state;
 	void* user_data;
@@ -87,9 +89,9 @@ static void retry_later(belle_sip_refresher_t* refresher) {
 }
 
 static void retry_later_on_io_error(belle_sip_refresher_t* refresher) {
-	/*if first retry, sent it in 500 ms*/
+	/*if first retry, sent it immediately. */
 	if (refresher->number_of_retry < 1) {
-		schedule_timer_at(refresher,DEFAULT_INITIAL_RETRY_AFTER_ON_IO_ERROR,RETRY);
+		schedule_timer_at(refresher,0,RETRY);
 		refresher->number_of_retry++;
 	} else {
 		retry_later(refresher);
@@ -216,7 +218,7 @@ static void process_response_event(belle_sip_listener_t *user_ctx, const belle_s
 	belle_sip_header_retry_after_t *retry_after_header;
 	int will_retry = TRUE; /*most error codes are retryable*/
 	retry_after_header = belle_sip_message_get_header_by_type(response,belle_sip_header_retry_after_t);
-	int retry_after_time = retry_after_header ? belle_sip_header_retry_after_get_retry_after(retry_after_header):0;
+	int retry_after_time = retry_after_header ? belle_sip_header_retry_after_get_retry_after(retry_after_header) : DEFAULT_RETRY_AFTER;
 
 
 	if (refresher && (client_transaction !=refresher->transaction))
@@ -815,9 +817,10 @@ belle_sip_refresher_t* belle_sip_refresher_new(belle_sip_client_transaction_t* t
 		belle_sip_message("Refresher [%p] takes ownership of transaction [%p]",refresher,transaction);
 		transaction->base.is_internal=1;
 		refresher->state=started;
-	}else{
+	} else {
 		belle_sip_refresher_start(refresher);
 	}
+
 	return refresher;
 }
 

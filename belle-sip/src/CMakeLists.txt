@@ -36,15 +36,15 @@ function(require_c99 target)
 endfunction()
 
 set(PUBLIC_INCLUDE_DIRS
-	${BCTOOLBOX_CORE_INCLUDE_DIR}
 	$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
 	$<INSTALL_INTERFACE:include>
+	$<INSTALL_INTERFACE:include/belle-sip>
 )
 set(PRIVATE_INCLUDE_DIRS
 	${CMAKE_CURRENT_SOURCE_DIR}/antlr3c/include
 	${CMAKE_CURRENT_BINARY_DIR}/antlr3c
 )
-set(LIBS ${BCTOOLBOX_CORE_LIBRARIES})
+set(LIBS bctoolbox)
 
 if(Threads_FOUND)
 	if(CMAKE_USE_PTHREADS_INIT AND NOT CMAKE_SYSTEM_NAME MATCHES "QNX" AND NOT ANDROID)
@@ -165,7 +165,7 @@ set(BELLE_SIP_SOURCE_FILES_CXX
 )
 if(APPLE)
 	set(BELLE_SIP_SOURCE_FILES_OBJC
-		backgroundtask.m
+		backgroundtask.mm
 	)
 endif()
 
@@ -176,26 +176,19 @@ if(BELLE_SIP_SOURCE_FILES_CXX)
 	bc_apply_compile_flags(BELLE_SIP_SOURCE_FILES_CXX STRICT_OPTIONS_CPP STRICT_OPTIONS_CXX)
 endif()
 if(MSVC)
-	get_source_file_property(DNS_C_COMPILE_FLAGS dns.c COMPILE_FLAGS)
-	set(DNS_C_COMPILE_FLAGS "${DNS_C_COMPILE_FLAGS} /wd4267") # Disable "possible loss of data" warnings
-	set(DNS_C_COMPILE_FLAGS "${DNS_C_COMPILE_FLAGS} /wd4804") # Disable "unsafe use of type 'bool' in operation" warnings
-	set(DNS_C_COMPILE_FLAGS "${DNS_C_COMPILE_FLAGS} /wd4244") # Disable "conversion from 'intmax_t' to 'int', possible loss of data" warnings
-	set(DNS_C_COMPILE_FLAGS "${DNS_C_COMPILE_FLAGS} /wd4305") # Disable "'initializing': truncation from 'unsigned int' to 'UCHAR'" warnings
-	set(DNS_C_COMPILE_FLAGS "${DNS_C_COMPILE_FLAGS} /wd4018") # Disable "signed/unsigned mismatch" warnings
-	set_source_files_properties(dns.c PROPERTIES COMPILE_FLAGS "${DNS_C_COMPILE_FLAGS}")
-	get_source_file_property(SDP_PARSER_COMPILE_FLAGS grammars/belle_sdpParser.c COMPILE_FLAGS)
-	set(SDP_PARSER_COMPILE_FLAGS "${SDP_PARSER_COMPILE_FLAGS} /wd4267") # Disable "possible loss of data" warnings
-	set_source_files_properties(grammars/belle_sdpParser.c PROPERTIES COMPILE_FLAGS "${SDP_PARSER_COMPILE_FLAGS}")
-	get_source_file_property(SIP_MESSAGE_PARSER_COMPILE_FLAGS grammars/belle_sip_messageParser.c COMPILE_FLAGS)
-	set(SIP_MESSAGE_PARSER_COMPILE_FLAGS "${SIP_MESSAGE_PARSER_COMPILE_FLAGS} /wd4267") # Disable "possible loss of data" warnings
-	set_source_files_properties(grammars/belle_sip_messageParser.c PROPERTIES COMPILE_FLAGS "${SIP_MESSAGE_PARSER_COMPILE_FLAGS}")
+	string(CONCAT DNS_C_COMPILE_FLAGS
+		" /wd4267" # Disable "possible loss of data" warnings
+		" /wd4804" # Disable "unsafe use of type 'bool' in operation" warnings
+		" /wd4244" # Disable "conversion from 'intmax_t' to 'int', possible loss of data" warnings
+		" /wd4305" # Disable "'initializing': truncation from 'unsigned int' to 'UCHAR'" warnings
+		" /wd4018" # Disable "signed/unsigned mismatch" warnings
+	)
+	set_property(SOURCE dns.c APPEND_STRING PROPERTY COMPILE_FLAGS ${DNS_C_COMPILE_FLAGS})
+	set_property(SOURCE grammars/belle_sdpParser.c APPEND_STRING PROPERTY COMPILE_FLAGS " /wd4267") # Disable "possible loss of data" warnings
+	set_property(SOURCE grammars/belle_sip_messageParser.c APPEND_STRING PROPERTY COMPILE_FLAGS " /wd4267") # Disable "possible loss of data" warnings
 else()
-	get_source_file_property(DNS_C_COMPILE_FLAGS dns.c COMPILE_FLAGS)
-	set(DNS_C_COMPILE_FLAGS "${DNS_C_COMPILE_FLAGS} -Wno-error")
-	set_source_files_properties(dns.c PROPERTIES COMPILE_FLAGS "${DNS_C_COMPILE_FLAGS}")
-	get_source_file_property(SIP_MESSAGE_PARSER_COMPILE_FLAGS grammars/belle_sip_messageParser.c COMPILE_FLAGS)
-	set(SIP_MESSAGE_PARSER_COMPILE_FLAGS "${SIP_MESSAGE_PARSER_COMPILE_FLAGS} -Wno-sign-compare")
-	set_source_files_properties(grammars/belle_sip_messageParser.c PROPERTIES COMPILE_FLAGS "${SIP_MESSAGE_PARSER_COMPILE_FLAGS}")
+	set_property(SOURCE dns.c APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-override-init -Wno-implicit-fallthrough -Wno-array-bounds")
+	set_property(SOURCE grammars/belle_sip_messageParser.c APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-sign-compare")
 endif()
 
 string(REPLACE ";" " " LINK_FLAGS_STR "${LINK_FLAGS}")
@@ -203,8 +196,8 @@ if(ENABLE_STATIC)
 	add_library(bellesip-static STATIC ${BELLE_SIP_HEADER_FILES} ${BELLE_SIP_SOURCE_FILES_C} ${BELLE_SIP_SOURCE_FILES_CXX} ${BELLE_SIP_SOURCE_FILES_OBJC} ${ANTLR3C_SOURCE_FILES})
 	set_target_properties(bellesip-static PROPERTIES OUTPUT_NAME bellesip)
 	set_target_properties(bellesip-static PROPERTIES CXX_STANDARD 11 CXX_STANDARD_REQUIRED ON)
-	target_include_directories(bellesip-static PUBLIC ${PUBLIC_INCLUDE_DIRS} PRIVATE ${PRIVATE_INCLUDE_DIRS})
-	target_link_libraries(bellesip-static INTERFACE ${LIBS})
+	target_include_directories(bellesip-static INTERFACE ${PUBLIC_INCLUDE_DIRS} PRIVATE ${PRIVATE_INCLUDE_DIRS})
+	target_link_libraries(bellesip-static PRIVATE ${LIBS})
 	if(NOT "${LINK_FLAGS_STR}" STREQUAL "")
 		set_target_properties(bellesip-static PROPERTIES LINK_FLAGS "${LINK_FLAGS_STR}")
 	endif()
@@ -216,11 +209,25 @@ if(ENABLE_STATIC)
 endif()
 if(ENABLE_SHARED)
 	add_library(bellesip SHARED ${BELLE_SIP_HEADER_FILES} ${BELLE_SIP_SOURCE_FILES_C} ${BELLE_SIP_SOURCE_FILES_CXX} ${BELLE_SIP_SOURCE_FILES_OBJC} ${ANTLR3C_SOURCE_FILES})
-	set_target_properties(bellesip PROPERTIES SOVERSION 0)
+	set_target_properties(bellesip PROPERTIES SOVERSION ${BELLESIP_SO_VERSION})
 	set_target_properties(bellesip PROPERTIES LINKER_LANGUAGE CXX)
 	set_target_properties(bellesip PROPERTIES CXX_STANDARD 11 CXX_STANDARD_REQUIRED ON)
-	target_include_directories(bellesip PUBLIC ${PUBLIC_INCLUDE_DIRS} PRIVATE ${PRIVATE_INCLUDE_DIRS})
+	target_include_directories(bellesip INTERFACE ${PUBLIC_INCLUDE_DIRS} PRIVATE ${PRIVATE_INCLUDE_DIRS})
 	target_link_libraries(bellesip PRIVATE ${LIBS})
+	if(APPLE)
+		if(IOS)
+			set(MIN_OS ${LINPHONE_IOS_DEPLOYMENT_TARGET})
+		else()
+			set(MIN_OS ${CMAKE_OSX_DEPLOYMENT_TARGET})
+		endif()
+		set_target_properties(bellesip PROPERTIES
+			FRAMEWORK TRUE
+			MACOSX_FRAMEWORK_IDENTIFIER org.linphone.belle-sip
+			MACOSX_FRAMEWORK_INFO_PLIST "${CMAKE_SOURCE_DIR}/build/osx/Info.plist.in"
+			PUBLIC_HEADER "${BELLE_SIP_HEADER_FILES}"
+		)
+		SET_TARGET_PROPERTIES(bellesip PROPERTIES OUTPUT_NAME belle-sip)
+	endif()
 	if(NOT "${LINK_FLAGS_STR}" STREQUAL "")
 		set_target_properties(bellesip PROPERTIES LINK_FLAGS "${LINK_FLAGS_STR}")
 	endif()
@@ -232,13 +239,24 @@ if(ENABLE_SHARED)
 				PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
 			)
 		endif()
+
 	endif()
-	install(TARGETS bellesip EXPORT ${EXPORT_TARGETS_NAME}Targets
-		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-		LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-		ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-		PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
-	)
+	if(APPLE)
+		install(TARGETS bellesip EXPORT ${EXPORT_TARGETS_NAME}Targets
+			RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+			LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+			ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+			FRAMEWORK DESTINATION Frameworks
+			PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
+			)
+	else()
+		install(TARGETS bellesip EXPORT ${EXPORT_TARGETS_NAME}Targets
+			RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+			LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+			ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+			PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
+			)
+	endif()
 endif()
 #to avoid // build to generate code twice in // leading compilation issues. Might probably be done in a better way
 if (ENABLE_SHARED AND ENABLE_STATIC)

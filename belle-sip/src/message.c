@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "grammars/belle_sip_messageLexer.h"
 #include "grammars/belle_sip_messageParser.h"
@@ -613,61 +614,62 @@ typedef struct code_phrase{
 } code_phrase_t;
 
 static code_phrase_t well_known_codes[]={
-	{	100		,		"Trying"	},
-	{	101		,		"Dialog establishment"	},
-	{	180		,		"Ringing"				},
-	{	181		,		"Call is being forwarded"	},
-	{	182		,		"Queued"	},
-	{	183		,		"Session progress"	},
-	{	200		,		"Ok"				},
-	{	202		,		"Accepted"	},
-	{	300		,		"Multiple choices"	},
-	{	301		,		"Moved permanently"	},
-	{	302		,		"Moved temporarily"	},
-	{	305		,		"Use proxy"	},
-	{	380		,		"Alternate contact"	},
-	{	400		,		"Bad request"		},
-	{	401		,		"Unauthorized"		},
-	{	402		,		"Payment required"	},
-	{	403		,		"Forbidden"	},
-	{	404		,		"Not found"	},
-	{	405		,		"Method not allowed"	},
-	{	406		,		"Not acceptable"	},
-	{	407		,		"Proxy authentication required"	},
-	{	408		,		"Request timeout"	},
-	{	410		,		"Gone"	},
-	{	412		,		"Conditional Request Failed" }, /*rfc3903*/
-	{	413		,		"Request entity too large"	},
-	{	414		,		"Request-URI too long"	},
-	{	415		,		"Unsupported media type"	},
-	{	416		,		"Unsupported URI scheme"	},
-	{	420		,		"Bad extension"	},
-	{	421		,		"Extension required"	},
-	{	423		,		"Interval too brief"	},
-	{	480		,		"Temporarily unavailable"	},
-	{	481		,		"Call/transaction does not exist"	},
-	{	482		,		"Loop detected"	},
-	{	483		,		"Too many hops"	},
-	{	484		,		"Address incomplete"	},
-	{	485		,		"Ambiguous"	},
-	{	486		,		"Busy here"	},
-	{	487		,		"Request terminated"	},
-	{	488		,		"Not acceptable here"	},
-	{	489		,		"Bad Event"	}, /*rfc3265*/
-	{	491		,		"Request pending"	},
-	{	493		,		"Undecipherable"	},
-	{	500		,		"Server internal error"	},
-	{	501		,		"Not implemented"	},
-	{	502		,		"Bad gateway"	},
-	{	503		,		"Service unavailable"	},
-	{	504		,		"Server time-out"	},
-	{	505		,		"Version not supported"	},
-	{	513		,		"Message too large"	},
-	{	600		,		"Busy everywhere"	},
-	{	603		,		"Decline"	},
-	{	604		,		"Does not exist anywhere"	},
-	{	606		,		"Not acceptable"	},
-	{	0			,		NULL	}
+	{ 100, "Trying"},
+	{ 101, "Dialog establishment"},
+	{ 180, "Ringing"},
+	{ 181, "Call is being forwarded"},
+	{ 182, "Queued"},
+	{ 183, "Session progress"},
+	{ 200, "Ok"},
+	{ 202, "Accepted"},
+	{ 300, "Multiple choices"},
+	{ 301, "Moved permanently"},
+	{ 302, "Moved temporarily"},
+	{ 305, "Use proxy"},
+	{ 380, "Alternate contact"},
+	{ 400, "Bad request"},
+	{ 401, "Unauthorized"},
+	{ 402, "Payment required"},
+	{ 403, "Forbidden"},
+	{ 404, "Not found"},
+	{ 405, "Method not allowed"},
+	{ 406, "Not acceptable"},
+	{ 407, "Proxy authentication required"},
+	{ 408, "Request timeout"},
+	{ 410, "Gone"},
+	{ 412, "Conditional Request Failed" }, /*rfc3903*/
+	{ 413, "Request entity too large"},
+	{ 414, "Request-URI too long"},
+	{ 415, "Unsupported media type"},
+	{ 416, "Unsupported URI scheme"},
+	{ 420, "Bad extension"},
+	{ 421, "Extension required"},
+	{ 422, "Session Interval Too Small"}, /*rfc4028*/
+	{ 423, "Interval too brief"},
+	{ 480, "Temporarily unavailable"},
+	{ 481, "Call/transaction does not exist"},
+	{ 482, "Loop detected"},
+	{ 483, "Too many hops"},
+	{ 484, "Address incomplete"},
+	{ 485, "Ambiguous"},
+	{ 486, "Busy here"},
+	{ 487, "Request terminated"},
+	{ 488, "Not acceptable here"},
+	{ 489, "Bad Event"}, /*rfc3265*/
+	{ 491, "Request pending"},
+	{ 493, "Undecipherable"},
+	{ 500, "Server internal error"},
+	{ 501, "Not implemented"},
+	{ 502, "Bad gateway"},
+	{ 503, "Service unavailable"},
+	{ 504, "Server time-out"},
+	{ 505, "Version not supported"},
+	{ 513, "Message too large"},
+	{ 600, "Busy everywhere"},
+	{ 603, "Decline"},
+	{ 604, "Does not exist anywhere"},
+	{ 606, "Not acceptable"},
+	{ 0, NULL	}
 };
 
 const char *belle_sip_get_well_known_reason_phrase(int status_code){
@@ -1019,12 +1021,12 @@ typedef struct message_header_list {
 
  */
 static message_header_list_t mandatory_headers[] = {
-		{"REGISTER",{"Call-ID","CSeq","From","To","Via",NULL}},
-		{"INVITE",{"Contact","Call-ID","CSeq","From","To","Via",NULL}},
-		{"CANCEL",{"Call-ID","CSeq","From","To","Via",NULL}},
-		{"BYE",{"Call-ID","CSeq","From","To","Via",NULL}},
-		{"ACK",{"Call-ID","CSeq","From","To","Via",NULL}},
-		{"*", { "To", "From", "CSeq","Via", NULL}}, /* catch-all, these fields are required all the time. */
+		{"REGISTER",{"Call-ID","CSeq","From", "Max-Forwards","To","Via",NULL}},
+		{"INVITE",{"Contact","Call-ID","CSeq","From", "Max-Forwards","To","Via",NULL}},
+		{"CANCEL",{"Call-ID","CSeq","From", "Max-Forwards","To","Via",NULL}},
+		{"BYE",{"Call-ID","CSeq","From", "Max-Forwards","To","Via",NULL}},
+		{"ACK",{"Call-ID","CSeq","From", "Max-Forwards","To","Via",NULL}},
+		{"*", { "To", "From", "CSeq", "Via", NULL}}, /* catch-all, these fields are required all the time. */
 		{NULL,{NULL}}
 };
 

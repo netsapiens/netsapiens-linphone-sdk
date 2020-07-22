@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "belle_sip_internal.h"
 #include <bctoolbox/defs.h>
@@ -216,21 +217,11 @@ static int belle_sip_dialog_schedule_expiration(belle_sip_dialog_t *dialog, bell
 	belle_sip_message("belle_sip_dialog_schedule_expiration() dialog=%p expires_value=%i", dialog, expires_value);
 	if (expires_value == 0) return BELLE_SIP_STOP;
 
-	/* FIXME: Temporary workaround for -Wcast-function-type. */
-	#if __GNUC__ >= 8
-		_Pragma("GCC diagnostic push")
-		_Pragma("GCC diagnostic ignored \"-Wcast-function-type\"")
-	#endif // if __GNUC__ >= 8
-
 	dialog->expiration_timer = belle_sip_main_loop_create_timeout(dialog->provider->stack->ml,
 					(belle_sip_source_func_t) belle_sip_dialog_on_expired,
 					dialog,
 					expires_value * 1000,
 					"Dialog expiration");
-
-	#if __GNUC__ >= 8
-		_Pragma("GCC diagnostic pop")
-	#endif // if __GNUC__ >= 8
 
 	return BELLE_SIP_CONTINUE;
 }
@@ -340,8 +331,8 @@ int belle_sip_dialog_check_incoming_request_ordering(belle_sip_dialog_t *obj, be
 static int dialog_on_200Ok_timer(belle_sip_dialog_t *dialog){
 	/*reset the timer */
 	const belle_sip_timer_config_t *cfg=belle_sip_stack_get_timer_config(dialog->provider->stack);
-	unsigned int prev_timeout=belle_sip_source_get_timeout(dialog->timer_200Ok);
-	belle_sip_source_set_timeout(dialog->timer_200Ok,MIN(2*prev_timeout,(unsigned int)cfg->T2));
+	int64_t prev_timeout=belle_sip_source_get_timeout_int64(dialog->timer_200Ok);
+	belle_sip_source_set_timeout_int64(dialog->timer_200Ok, MIN(2*prev_timeout,cfg->T2));
 	belle_sip_message("Dialog sending retransmission of 200Ok");
 	belle_sip_provider_send_response(dialog->provider,dialog->last_200Ok);
 	return BELLE_SIP_CONTINUE;
@@ -367,12 +358,6 @@ static void belle_sip_dialog_init_200Ok_retrans(belle_sip_dialog_t *obj, belle_s
 		return;
 	}
 
-	/* FIXME: Temporary workaround for -Wcast-function-type. */
-	#if __GNUC__ >= 8
-		_Pragma("GCC diagnostic push")
-		_Pragma("GCC diagnostic ignored \"-Wcast-function-type\"")
-	#endif // if __GNUC__ >= 8
-
 	obj->timer_200Ok=belle_sip_timeout_source_new((belle_sip_source_func_t)dialog_on_200Ok_timer,obj,cfg->T1);
 	belle_sip_object_set_name((belle_sip_object_t*)obj->timer_200Ok,"dialog_200Ok_timer");
 	belle_sip_main_loop_add_source(obj->provider->stack->ml,obj->timer_200Ok);
@@ -380,10 +365,6 @@ static void belle_sip_dialog_init_200Ok_retrans(belle_sip_dialog_t *obj, belle_s
 	obj->timer_200Ok_end=belle_sip_timeout_source_new((belle_sip_source_func_t)dialog_on_200Ok_end,obj,cfg->T1*64);
 	belle_sip_object_set_name((belle_sip_object_t*)obj->timer_200Ok_end,"dialog_200Ok_timer_end");
 	belle_sip_main_loop_add_source(obj->provider->stack->ml,obj->timer_200Ok_end);
-
-	#if __GNUC__ >= 8
-		_Pragma("GCC diagnostic pop")
-	#endif // if __GNUC__ >= 8
 
 	obj->last_200Ok=(belle_sip_response_t*)belle_sip_object_ref(resp);
 }
@@ -496,9 +477,13 @@ static void belle_sip_dialog_send_prack(belle_sip_dialog_t *dialog, belle_sip_re
 	belle_sip_provider_send_request(dialog->provider, request);
 }
 
-static void belle_sip_dialog_process_response_100rel(belle_sip_dialog_t *obj, belle_sip_response_t *resp){
+/*return 0 if message should be delivered to the next listener, otherwise, its a retransmision, just keep it*/
+static int belle_sip_dialog_process_response_100rel(belle_sip_dialog_t *obj, belle_sip_transaction_t* transaction){
+	belle_sip_response_t *resp = belle_sip_transaction_get_response(transaction);
 	belle_sip_message_t* msg = (belle_sip_message_t*)resp;
 	belle_sip_header_cseq_t *header_cseq_resp = belle_sip_message_get_header_by_type(msg, belle_sip_header_cseq_t);
+	int ret = 0;
+	
 	if (header_cseq_resp == NULL){
 		belle_sip_message("Message [%p] does not contain CSeq header!", msg);
 	}
@@ -522,14 +507,21 @@ static void belle_sip_dialog_process_response_100rel(belle_sip_dialog_t *obj, be
 				long rseq = strtol(header_rseq_value, NULL, 10);
 				unsigned int cseq_resp = belle_sip_header_cseq_get_seq_number(header_cseq_resp);
 				const char* method_resp = belle_sip_header_cseq_get_method(header_cseq_resp);
-				
-				/*send PRACK from callee */
-				belle_sip_request_t *prack = belle_sip_dialog_create_prack(obj, rseq, cseq_resp, method_resp);
-				if (prack){
-					belle_sip_dialog_send_prack(obj, prack);
-				}
-				else {
-					belle_sip_message("Failed to create PRACK message!");
+				/*"A response is a retransmission when
+				 its dialog ID, CSeq, and RSeq match the original response". Currently we only store last acknoledged Rseq. This data is used to detect retransmitions*/
+				belle_sip_ict_t * ict = BELLE_SIP_CAST(transaction,belle_sip_ict_t);
+				if (ict->r_cseq > 0 &&  ict->r_cseq <= (unsigned int)rseq) {
+					belle_sip_warning("provisionnal response with sequence number [%ld] already acknoledged, dropping",rseq);
+					ret = -1;
+				} else {
+					/*send PRACK from callee */
+					belle_sip_request_t *prack = belle_sip_dialog_create_prack(obj, rseq, cseq_resp, method_resp);
+					if (prack){
+						belle_sip_dialog_send_prack(obj, prack);
+						ict->r_cseq = rseq;
+					} else {
+						belle_sip_message("Failed to create PRACK message!");
+					}
 				}
 			}
 			else {
@@ -537,6 +529,7 @@ static void belle_sip_dialog_process_response_100rel(belle_sip_dialog_t *obj, be
 			}
 		}
 	}
+	return ret;
 }
 
 /*
@@ -587,8 +580,8 @@ int belle_sip_dialog_update(belle_sip_dialog_t *obj, belle_sip_transaction_t* tr
 				belle_sip_dialog_establish(obj,req,resp);
 				if (code<200){
 					set_state(obj,BELLE_SIP_DIALOG_EARLY);
-					if ((code == 180 || code == 183) && !as_uas) {
-						belle_sip_dialog_process_response_100rel(obj, resp);
+					if (!as_uas) {
+						belle_sip_dialog_process_response_100rel(obj, transaction);
 					}
 					break;
 				}/* no break  for code >200 because need to call belle_sip_dialog_establish_full*/
@@ -624,8 +617,12 @@ int belle_sip_dialog_update(belle_sip_dialog_t *obj, belle_sip_transaction_t* tr
 				/*no response establishing the dialog, and transaction terminated (transport errors)*/
 				delete_dialog=TRUE;
 			}
-			if ((code == 180 || code == 183) && !as_uas) {
-				belle_sip_dialog_process_response_100rel(obj, resp);
+			if ((code > 100 && code < 200) && !as_uas) {
+				if (belle_sip_dialog_process_response_100rel(obj, transaction)) {
+					/*retransmition detected, dropping*/
+					ret = -1;
+					goto end;
+				}
 			}
 			break;
 		case BELLE_SIP_DIALOG_CONFIRMED:

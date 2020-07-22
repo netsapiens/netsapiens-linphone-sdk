@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "belle_sip_internal.h"
 #include <limits.h>
@@ -728,7 +729,7 @@ static void update_inactivity_timer(belle_sip_channel_t *obj, int from_recv){
 			obj->inactivity_timer=belle_sip_main_loop_create_timeout(obj->stack->ml,channel_inactive_timeout,obj,inactive_timeout,"Channel inactivity timer");
 		}else{
 			/*restart the timer for new period*/
-			belle_sip_source_set_timeout(obj->inactivity_timer,inactive_timeout);
+			belle_sip_source_set_timeout_int64(obj->inactivity_timer,inactive_timeout);
 		}
 	}else{
 		if (obj->inactivity_timer){
@@ -836,11 +837,20 @@ void belle_sip_channel_remove_listener(belle_sip_channel_t *obj, belle_sip_chann
 }
 
 int belle_sip_channel_matches(const belle_sip_channel_t *obj, const belle_sip_hop_t *hop, const struct addrinfo *addr){
-	if (hop && (strcmp(hop->host,obj->peer_name)==0 || (obj->current_peer_cname && strcmp(hop->host,obj->current_peer_cname)==0))
-		&& (hop->port==obj->peer_port || obj->srv_overrides_port)){
-		if (hop->cname && obj->peer_cname && strcmp(hop->cname,obj->peer_cname)!=0)
-			return 0; /*cname mismatch*/
-		return 1;
+	if (hop){
+		if (obj->current_peer_cname && strcmp(hop->host, obj->current_peer_cname)==0 && hop->port==obj->peer_port){
+			/*We are matching a specific node of a SRV record set. */
+			if (hop->cname && obj->peer_cname && strcmp(hop->cname,obj->current_peer_cname) != 0)
+				return 0; /*cname mismatch*/
+			return 1;
+		}
+		if (strcmp(hop->host,obj->peer_name)==0 && (hop->port==obj->peer_port || obj->srv_overrides_port)){
+			/*We may be matching the general name of the service, in that case the port doesn't matter.*/ 
+			if (hop->cname && obj->peer_cname && strcmp(hop->cname,obj->peer_cname) != 0){
+				return 0; /*cname mismatch*/
+			}
+			return 1;
+		}
 	}
 	if (addr && obj->current_peer)
 		return bctbx_sockaddr_equals(addr->ai_addr,obj->current_peer->ai_addr);
@@ -1007,7 +1017,7 @@ static void channel_set_current_peer(belle_sip_channel_t *obj, const struct addr
 		const belle_sip_dns_srv_t *srv = belle_sip_resolver_results_get_srv_from_addrinfo(obj->resolver_results, ai);
 		obj->current_peer_cname = srv ? belle_sip_dns_srv_get_target(srv) : NULL;
 		if (obj->current_peer_cname){
-			belle_sip_message("channel[%p]: current peer hostname is [%s].", obj, obj->current_peer_cname); 
+			belle_sip_message("channel[%p]: current peer hostname is [%s].", obj, obj->current_peer_cname);
 		}
 	}else{
 		obj->current_peer_cname = NULL;
@@ -1274,6 +1284,9 @@ static void _send_message(belle_sip_channel_t *obj){
 			obj->ewouldblock_offset+=sendret;
 			if (obj->ewouldblock_offset==obj->ewouldblock_size){
 				free_ewouldblock_buffer(obj);
+				if (obj->out_state==OUTPUT_STREAM_SENDING_HEADERS)
+					goto done; //to avoid message to be sent twice
+				/*else continue body sending*/
 			}
 			/* continue to expedite the ewouldblock error until we it is completed or get a new ewouldblock*/
 		}else if (belle_sip_error_code_is_would_block(-sendret)) {
@@ -1413,7 +1426,7 @@ static void channel_process_queue(belle_sip_channel_t *obj){
 		_send_message(obj);
 	}
 
-	while (obj->state==BELLE_SIP_CHANNEL_READY && obj->out_state==OUTPUT_STREAM_IDLE && ((msg = channel_pop_outgoing(obj)) != NULL)) {
+	while (obj->state == BELLE_SIP_CHANNEL_READY && obj->out_state == OUTPUT_STREAM_IDLE && (msg = channel_pop_outgoing(obj)) != NULL) {
 		send_message(obj, msg);
 		belle_sip_object_unref(msg);
 	}
@@ -1479,7 +1492,7 @@ static void channel_res_done(void *data, belle_sip_resolver_results_t *results){
 	const struct addrinfo *ai_list = NULL;
 	const char *name = NULL;
 	belle_sip_resolver_results_t *prev_dns_results = obj->resolver_results;
-	
+
 	if (obj->resolver_ctx){
 		belle_sip_object_unref(obj->resolver_ctx);
 		obj->resolver_ctx=NULL;
@@ -1491,7 +1504,7 @@ static void channel_res_done(void *data, belle_sip_resolver_results_t *results){
 		name = belle_sip_resolver_results_get_name(results);
 	}
 	obj->resolver_results = results;
-	
+
 	if (ai_list){
 		int ttl = belle_sip_resolver_results_get_ttl(results);
 		/* setup now our current_peer. It can be initialized for the first time, kept as before, or changed*/
@@ -1501,7 +1514,7 @@ static void channel_res_done(void *data, belle_sip_resolver_results_t *results){
 			channel_set_state(obj,BELLE_SIP_CHANNEL_RES_DONE);
 		} else {
 			const struct addrinfo *existing_peer;
-			
+
 			if (belle_sip_stack_reconnect_to_primary_asap_enabled(obj->stack)) {
 				existing_peer = addrinfo_is_first(obj->current_peer, ai_list);
 			} else {
@@ -1526,7 +1539,7 @@ static void channel_res_done(void *data, belle_sip_resolver_results_t *results){
 			obj->dns_ttl_timer = belle_sip_main_loop_create_timeout(obj->stack->ml, channel_dns_ttl_timeout, obj, ttl * 1000, "Channel DNS TTL timer");
 		} else {
 			/* Restart the timer for new period. */
-			belle_sip_source_set_timeout(obj->dns_ttl_timer, ttl * 1000);
+			belle_sip_source_set_timeout_int64(obj->dns_ttl_timer, ttl * 1000LL);
 			belle_sip_main_loop_add_source(obj->stack->ml, obj->dns_ttl_timer);
 		}
 	}else{
@@ -1604,18 +1617,7 @@ static void queue_message_delayed(belle_sip_channel_t *obj, belle_sip_message_t 
 	ctx->chan=(belle_sip_channel_t*)belle_sip_object_ref(obj);
 	ctx->msg=(belle_sip_message_t*)belle_sip_object_ref(msg);
 
-	/* FIXME: Temporary workaround for -Wcast-function-type. */
-	#if __GNUC__ >= 8
-		_Pragma("GCC diagnostic push")
-		_Pragma("GCC diagnostic ignored \"-Wcast-function-type\"")
-	#endif // if __GNUC__ >= 8
-
 	belle_sip_main_loop_add_timeout(obj->stack->ml,(belle_sip_source_func_t)on_delayed_send_do,ctx,obj->stack->tx_delay);
-
-	#if __GNUC__ >= 8
-		_Pragma("GCC diagnostic pop")
-	#endif // if __GNUC__ >= 8
-
 	belle_sip_message("channel %p: message sending delayed by %i ms",obj,obj->stack->tx_delay);
 }
 

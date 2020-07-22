@@ -1,20 +1,21 @@
 /*
-	belle-sip - SIP (RFC3261) library.
-	Copyright (C) 2010-2018  Belledonne Communications SARL
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 2 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (c) 2012-2019 Belledonne Communications SARL.
+ *
+ * This file is part of belle-sip.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #ifndef belle_utils_h
 #define belle_utils_h
@@ -148,6 +149,7 @@ void belle_sip_object_pool_remove(belle_sip_object_pool_t *pool, belle_sip_objec
 
 belle_sip_object_t * _belle_sip_object_init(belle_sip_object_t *obj, belle_sip_object_vptr_t *vptr);
 void belle_sip_cpp_object_delete(belle_sip_object_t *obj);
+const char * belle_sip_cpp_object_get_type_name(const belle_sip_object_t *obj);
 void belle_sip_object_uninit(belle_sip_object_t *obj);
 #define belle_sip_object_init(obj)		/*nothing*/
 
@@ -215,6 +217,7 @@ BELLE_SIP_DECLARE_VPTR(belle_sip_header_service_route_t);
 BELLE_SIP_DECLARE_VPTR(belle_sip_header_refer_to_t);
 BELLE_SIP_DECLARE_VPTR(belle_sip_header_referred_by_t);
 BELLE_SIP_DECLARE_VPTR(belle_sip_header_replaces_t);
+BELLE_SIP_DECLARE_VPTR(belle_sip_header_session_expires_t);
 BELLE_SIP_DECLARE_VPTR(belle_sip_header_date_t);
 BELLE_SIP_DECLARE_VPTR(belle_sip_hop_t);
 BELLE_SIP_DECLARE_VPTR(belle_sip_object_pool_t);
@@ -272,7 +275,7 @@ struct belle_sip_source{
 	long armed_events;
 	unsigned short pad;
 #endif
-	int timeout;
+	int64_t timeout;
 	void *data;
 	uint64_t expire_ms;
 	int index; /* index in pollfd table */
@@ -494,10 +497,7 @@ belle_sip_param_pair_t* belle_sip_param_pair_ref(belle_sip_param_pair_t* obj);
 
 void belle_sip_param_pair_unref(belle_sip_param_pair_t* obj);
 
-
-
-
-/*calss header*/
+/*class header*/
 struct _belle_sip_header {
 	belle_sip_object_t base;
 	belle_sip_header_t* next;
@@ -505,11 +505,11 @@ struct _belle_sip_header {
 	char *unparsed_value;
 };
 
-
 void belle_sip_response_fill_for_dialog(belle_sip_response_t *obj, belle_sip_request_t *req);
 void belle_sip_util_copy_headers(belle_sip_message_t *orig, belle_sip_message_t *dest, const char*header, int multiple);
 
 void belle_sip_header_init(belle_sip_header_t* obj);
+
 /*class parameters*/
 struct _belle_sip_parameters {
 	belle_sip_header_t base;
@@ -543,6 +543,7 @@ struct belle_sip_stack{
 	belle_sip_main_loop_t *ml;
 	belle_sip_timer_config_t timer_config;
 	int transport_timeout;
+	int unreliable_transport_timeout;
 	int inactive_transport_timeout;
 	int dns_timeout;
 	int tx_delay; /*used to simulate network transmission delay, for tests*/
@@ -600,7 +601,7 @@ BELLESIP_EXPORT belle_sip_server_transaction_t * belle_sip_provider_find_matchin
 void belle_sip_provider_remove_server_transaction(belle_sip_provider_t *prov, belle_sip_server_transaction_t *t);
 void belle_sip_provider_set_transaction_terminated(belle_sip_provider_t *p, belle_sip_transaction_t *t);
 void *belle_sip_transaction_get_application_data_internal(const belle_sip_transaction_t *t);
-belle_sip_channel_t * belle_sip_provider_get_channel(belle_sip_provider_t *p, const belle_sip_hop_t *hop);
+BELLESIP_EXPORT belle_sip_channel_t * belle_sip_provider_get_channel(belle_sip_provider_t *p, const belle_sip_hop_t *hop);
 void belle_sip_provider_add_dialog(belle_sip_provider_t *prov, belle_sip_dialog_t *dialog);
 void belle_sip_provider_remove_dialog(belle_sip_provider_t *prov, belle_sip_dialog_t *dialog);
 void belle_sip_provider_release_channel(belle_sip_provider_t *p, belle_sip_channel_t *chan);
@@ -754,6 +755,8 @@ struct belle_sip_ict{
 	belle_sip_source_t *timer_D;
 	belle_sip_source_t *timer_M;
 	belle_sip_request_t *ack;
+	/*last acknoleged provisional response sequence number. Note that "The RSeq numbering space is within a single transaction."*/
+	unsigned int r_cseq;
 };
 
 typedef struct belle_sip_ict belle_sip_ict_t;
@@ -1009,7 +1012,6 @@ belle_sip_refresher_t* belle_sip_refresher_new(belle_sip_client_transaction_t* t
  * returns a char, even if entry is escaped*/
 size_t belle_sip_get_char (const char*a,char*out);
 /*return an escaped string*/
-BELLESIP_EXPORT	char* belle_sip_uri_to_escaped_username(const char* buff) ;
 BELLESIP_EXPORT	char* belle_sip_uri_to_escaped_userpasswd(const char* buff) ;
 BELLESIP_EXPORT	char* belle_sip_uri_to_escaped_parameter(const char* buff) ;
 BELLESIP_EXPORT	char* belle_sip_uri_to_escaped_header(const char* buff) ;
@@ -1106,7 +1108,10 @@ void belle_sip_multipart_body_handler_progress_cb(belle_sip_body_handler_t *obj,
 belle_sip_list_t *belle_sip_parse_directory(const char *path, const char *file_type);
 
 typedef struct authorization_context authorization_context_t;
-BELLESIP_EXPORT void belle_sip_authorization_destroy(authorization_context_t* object);
+typedef authorization_context_t belle_sip_authorization_t;
+
+BELLESIP_EXPORT void belle_sip_authorization_destroy(belle_sip_authorization_t* object);
+BELLESIP_EXPORT const char *belle_sip_authorization_get_algorithm(const belle_sip_authorization_t* object);
 
 /**
  * Generate a random unsigned int
