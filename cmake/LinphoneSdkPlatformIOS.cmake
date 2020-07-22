@@ -23,10 +23,11 @@
 include(LinphoneSdkPlatformCommon)
 include(LinphoneSdkCheckBuildToolsIOS)
 
-
 set(LINPHONESDK_IOS_ARCHS "arm64, armv7, x86_64" CACHE STRING "Android architectures to build for: comma-separated list of values in [arm64, armv7, x86_64]")
 set(LINPHONESDK_IOS_BASE_URL "https://www.linphone.org/releases/ios/" CACHE STRING "URL of the repository where the iOS SDK zip files are located")
-
+set(LINPHONE_APP_EXT_FRAMEWORKS "bctoolbox.framework,belcard.framework,belle-sip.framework,belr.framework,lime.framework,linphone.framework,mediastreamer2.framework,msamr.framework,mscodec2.framework,msopenh264.framework,mssilk.framework,mswebrtc.framework,msx264.framework,ortp.framework"
+							CACHE STRING "Frameworks which are safe for app extension use")
+set(LINPHONE_OTHER_FRAMEWORKS "bctoolbox-ios.framework" CACHE STRING "Frameworks which aren't safe for app extension use")
 
 set(_dummy_libraries)
 if(NOT ENABLE_UNIT_TESTS)
@@ -59,23 +60,31 @@ set(_ios_build_targets)
 
 linphone_sdk_convert_comma_separated_list_to_cmake_list("${LINPHONESDK_IOS_ARCHS}" _archs)
 foreach(_arch IN LISTS _archs)
-	set(_cmake_args
-		"-DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/linphone-sdk/${_arch}-apple-darwin.ios"
-		"-DCMAKE_PREFIX_PATH=${CMAKE_BINARY_DIR}/linphone-sdk/${_arch}-apple-darwin.ios"
+
+	set(_cmake_args )
+
+	linphone_sdk_get_inherited_cmake_args()
+	linphone_sdk_get_enable_cmake_args()
+	list(APPEND _cmake_args ${_enable_cmake_args})
+
+	list(APPEND _cmake_args
+		"-DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}/${_arch}-apple-darwin.ios"
+		"-DCMAKE_PREFIX_PATH=${CMAKE_INSTALL_PREFIX}/${_arch}-apple-darwin.ios"
 		"-DCMAKE_NO_SYSTEM_FROM_IMPORTED=ON"
 		"-DLINPHONE_BUILDER_WORK_DIR=${CMAKE_BINARY_DIR}/WORK/ios-${_arch}"
 		"-DLINPHONE_BUILDER_EXTERNAL_SOURCE_PATH=${CMAKE_SOURCE_DIR}"
 		"-DLINPHONE_BUILDER_CONFIG_FILE=configs/config-ios-${_arch}.cmake"
 		"-DCMAKE_TOOLCHAIN_FILE=toolchains/toolchain-ios-${_arch}.cmake"
 	)
+
 	if(_dummy_libraries)
 		string(REPLACE ";" " " _dummy_libraries "${_dummy_libraries}")
 		list(APPEND _cmake_args "-DLINPHONE_BUILDER_DUMMY_LIBRARIES=${_dummy_libraries}")
 	endif()
 
-	linphone_sdk_get_inherited_cmake_args()
-	linphone_sdk_get_enable_cmake_args()
-	list(APPEND _cmake_args ${_enable_cmake_args})
+	#We have to remove the defined CMAKE_INSTALL_PREFIX from inherited variables.
+	#Because cache variables take precedence and we redefine it here for multi-arch
+	ExcludeFromList(_cmake_cache_args CMAKE_INSTALL_PREFIX ${_inherited_cmake_args})
 
 	ExternalProject_Add(ios-${_arch}
 		${_ep_depends}
@@ -83,7 +92,7 @@ foreach(_arch IN LISTS _archs)
 		BINARY_DIR "${CMAKE_BINARY_DIR}/ios-${_arch}"
 		CMAKE_GENERATOR "${CMAKE_GENERATOR}"
 		CMAKE_ARGS ${_cmake_args}
-		CMAKE_CACHE_ARGS ${_inherited_cmake_args}
+		CMAKE_CACHE_ARGS ${_cmake_cache_args}
 		INSTALL_COMMAND "${CMAKE_SOURCE_DIR}/cmake/dummy.sh"
 	)
 	ExternalProject_Add_Step(ios-${_arch} force_build
@@ -97,13 +106,21 @@ endforeach()
 
 
 add_custom_target(lipo ALL
-	"${CMAKE_COMMAND}" "-DLINPHONESDK_DIR=${LINPHONESDK_DIR}" "-DLINPHONESDK_BUILD_DIR=${CMAKE_BINARY_DIR}" "-DLINPHONESDK_IOS_ARCHS=${LINPHONESDK_IOS_ARCHS}" "-P" "${LINPHONESDK_DIR}/cmake/IOS/Lipo.cmake"
+	"${CMAKE_COMMAND}" "-DLINPHONESDK_DIR=${LINPHONESDK_DIR}" "-DLINPHONESDK_BUILD_DIR=${CMAKE_BINARY_DIR}" "-DLINPHONESDK_IOS_ARCHS=${LINPHONESDK_IOS_ARCHS}" "-DENABLE_SWIFT_WRAPPER=${ENABLE_SWIFT_WRAPPER}" "-DENABLE_SWIFT_WRAPPER_COMPILATION=${ENABLE_SWIFT_WRAPPER_COMPILATION}" "-DENABLE_JAZZY_DOC=${ENABLE_JAZZY_DOC}" "-P" "${LINPHONESDK_DIR}/cmake/IOS/Lipo.cmake"
 	COMMENT "Aggregating frameworks of all architectures using lipo"
 	DEPENDS ${_ios_build_targets}
 )
 
 add_custom_target(sdk ALL
-	"${CMAKE_COMMAND}" "-DLINPHONESDK_DIR=${LINPHONESDK_DIR}" "-DLINPHONESDK_BUILD_DIR=${CMAKE_BINARY_DIR}" "-DLINPHONESDK_VERSION=${LINPHONESDK_VERSION}" "-DLINPHONESDK_ENABLED_FEATURES_FILENAME=${CMAKE_BINARY_DIR}/enabled_features.txt" "-DLINPHONESDK_IOS_ARCHS=${LINPHONESDK_IOS_ARCHS}" "-DLINPHONESDK_IOS_BASE_URL=${LINPHONESDK_IOS_BASE_URL}" "-P" "${LINPHONESDK_DIR}/cmake/IOS/GenerateSDK.cmake"
+	"${CMAKE_COMMAND}" "-DLINPHONESDK_DIR=${LINPHONESDK_DIR}" "-DLINPHONESDK_BUILD_DIR=${CMAKE_BINARY_DIR}" "-DLINPHONESDK_VERSION=${LINPHONESDK_VERSION}" "-DLINPHONESDK_ENABLED_FEATURES_FILENAME=${CMAKE_BINARY_DIR}/enabled_features.txt" "-DLINPHONESDK_IOS_ARCHS=${LINPHONESDK_IOS_ARCHS}" "-DLINPHONESDK_IOS_BASE_URL=${LINPHONESDK_IOS_BASE_URL}" "-DLINPHONE_APP_EXT_FRAMEWORKS=${LINPHONE_APP_EXT_FRAMEWORKS}" "-DLINPHONE_OTHER_FRAMEWORKS=${LINPHONE_OTHER_FRAMEWORKS}" "-P" "${LINPHONESDK_DIR}/cmake/IOS/GenerateSDK.cmake"
 	COMMENT "Generating the SDK (zip file and podspec)"
 	DEPENDS lipo
+)
+
+
+#I don't know yet how to avoid copying commands
+add_custom_target(sdk-only
+	"${CMAKE_COMMAND}" "-DLINPHONESDK_DIR=${LINPHONESDK_DIR}" "-DLINPHONESDK_BUILD_DIR=${CMAKE_BINARY_DIR}" "-DLINPHONESDK_IOS_ARCHS=${LINPHONESDK_IOS_ARCHS}" "-DENABLE_SWIFT_WRAPPER=${ENABLE_SWIFT_WRAPPER}" "-DENABLE_SWIFT_WRAPPER_COMPILATION=${ENABLE_SWIFT_WRAPPER_COMPILATION}" "-DENABLE_JAZZY_DOC=${ENABLE_JAZZY_DOC}" "-P" "${LINPHONESDK_DIR}/cmake/IOS/Lipo.cmake"
+	COMMAND "${CMAKE_COMMAND}" "-DLINPHONESDK_DIR=${LINPHONESDK_DIR}" "-DLINPHONESDK_BUILD_DIR=${CMAKE_BINARY_DIR}" "-DLINPHONESDK_VERSION=${LINPHONESDK_VERSION}" "-DLINPHONESDK_ENABLED_FEATURES_FILENAME=${CMAKE_BINARY_DIR}/enabled_features.txt" "-DLINPHONESDK_IOS_ARCHS=${LINPHONESDK_IOS_ARCHS}" "-DLINPHONESDK_IOS_BASE_URL=${LINPHONESDK_IOS_BASE_URL}" "-DLINPHONE_APP_EXT_FRAMEWORKS=${LINPHONE_APP_EXT_FRAMEWORKS}" "-DLINPHONE_OTHER_FRAMEWORKS=${LINPHONE_OTHER_FRAMEWORKS}" "-P" "${LINPHONESDK_DIR}/cmake/IOS/GenerateSDK.cmake"
+	COMMENT "Aggregating frameworks of all architectures using lipo and Generating SDK (zip file and podspec)"
 )

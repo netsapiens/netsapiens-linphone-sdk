@@ -32,6 +32,7 @@ apply plugin: 'maven-publish'
 dependencies {
     implementation 'org.apache.commons:commons-compress:1.16.1'
     javadocDeps 'org.apache.commons:commons-compress:1.16.1'
+    compileOnly 'org.jetbrains:annotations:19.0.0'
 }
 
 static def isGeneratedJavaWrapperAvailable() {
@@ -41,8 +42,9 @@ static def isGeneratedJavaWrapperAvailable() {
 
 def rootSdk = '@LINPHONESDK_BUILD_DIR@/linphone-sdk/android-@LINPHONESDK_FIRST_ARCH@'
 def srcDir = ['@LINPHONESDK_DIR@/mediastreamer2/java/src']
-srcDir += [rootSdk + '/share/linphonej/java/org/linphone/core/']
-srcDir += ['@LINPHONESDK_DIR@/linphone/wrappers/java/classes/']
+def pluginsDir = rootSdk + '/lib/mediastreamer/plugins/'
+srcDir += [rootSdk + '/share/linphonej/java/']
+srcDir += ['@LINPHONESDK_DIR@/liblinphone/wrappers/java/classes/']
 
 def excludePackage = []
 excludePackage.add('**/gdb.*')
@@ -60,45 +62,29 @@ if (!isGeneratedJavaWrapperAvailable()) {
     javaExcludes.add('**/H264Helper.java')
 
     // Add the previous wrapper to sources
-    srcDir += ['@LINPHONESDK_DIR@/linphone/java/common/']
-    srcDir += ['@LINPHONESDK_DIR@/linphone/java/impl/']
-    srcDir += ['@LINPHONESDK_DIR@/linphone/java/j2se/']
+    srcDir += ['@LINPHONESDK_DIR@/liblinphone/java/common/']
+    srcDir += ['@LINPHONESDK_DIR@/liblinphone/java/impl/']
+    srcDir += ['@LINPHONESDK_DIR@/liblinphone/java/j2se/']
 }
 
-def gitVersion = new ByteArrayOutputStream()
-def gitBranch = new ByteArrayOutputStream()
+def pluginsList = ""
 
-task getGitVersion {
-    exec {
-        commandLine 'git', 'describe', '--always'
-        standardOutput = gitVersion
-    }
-    exec {
-        //commandLine 'git', 'name-rev', '--exclude=*tags/*', '--name-only', 'HEAD'
-        commandLine 'git', 'name-rev', '--name-only', 'HEAD'
-        standardOutput = gitBranch
-    }
-    doLast {
-        def branchSplit = gitBranch.toString().trim().split('/')
-        def splitLen = branchSplit.length
-        if (splitLen == 4) {
-            gitBranch = branchSplit[2] + '/' + branchSplit[3]
-            println("Local repository seems to be in detached head state, using last 2 segments of Git branch: " + gitBranch.toString().trim())
-        } else {
-            println("Git branch: " + gitBranch.toString().trim())
-        }
+task listPlugins() {
+    fileTree(pluginsDir).visit { FileVisitDetails details -> 
+        println("Found plugin: " + details.file.name)
+        pluginsList = pluginsList + "\"" + details.file.name  + "\","
     }
 }
 
-project.tasks['preBuild'].dependsOn 'getGitVersion'
+project.tasks['preBuild'].dependsOn 'listPlugins'
 
 android {
     defaultConfig {
         compileSdkVersion 28
         minSdkVersion 16
         targetSdkVersion 28
-        versionCode 4100
-        versionName "4.1"
+        versionCode 4200
+        versionName "@LINPHONESDK_VERSION@"
         setProperty("archivesBaseName", "linphone-sdk-android")
         consumerProguardFiles "${buildDir}/proguard.txt"
     }
@@ -117,16 +103,18 @@ android {
             signingConfig signingConfigs.release
             minifyEnabled false
             useProguard false
-            resValue "string", "linphone_sdk_version", gitVersion.toString().trim()
-            resValue "string", "linphone_sdk_branch", gitBranch.toString().trim()
+            resValue "string", "linphone_sdk_version", "@LINPHONESDK_VERSION@"
+            resValue "string", "linphone_sdk_branch", "@LINPHONESDK_BRANCH@"
+            buildConfigField "String[]", "PLUGINS_ARRAY", "{" + pluginsList +  "}"
         }
         debug {
             minifyEnabled false
             useProguard false
             debuggable true
             jniDebuggable true
-            resValue "string", "linphone_sdk_version", gitVersion.toString().trim() + "-debug"
-            resValue "string", "linphone_sdk_branch", gitBranch.toString().trim()
+            resValue "string", "linphone_sdk_version", "@LINPHONESDK_VERSION@-debug"
+            resValue "string", "linphone_sdk_branch", "@LINPHONESDK_BRANCH@"
+            buildConfigField "String[]", "PLUGINS_ARRAY", "{" + pluginsList +  "}"
         }
     }
 
@@ -172,6 +160,13 @@ task(releaseJavadoc, type: Javadoc, dependsOn: "assembleRelease") {
     classpath += files(android.libraryVariants.release.javaCompile.classpath.files)
     classpath += configurations.javadocDeps
     options.encoding = 'UTF-8'
+    options.addStringOption('Xdoclint:none', '-quiet')
+
+    afterEvaluate {
+        classpath += files(android.libraryVariants.collect { variant ->
+            variant.javaCompileProvider.get().classpath.files
+        })
+    }
 }
 
 task sourcesJar(type: Jar) {
@@ -220,43 +215,19 @@ task copyAssets(type: Sync) {
 
 project.tasks['preBuild'].dependsOn 'copyAssets'
 project.tasks['preBuild'].dependsOn 'copyProguard'
+project.tasks['assemble'].dependsOn 'sourcesJar'
+project.tasks['assemble'].dependsOn 'androidJavadocsJar'
 
-def artefactGroupId = 'org.linphone'
-if (project.hasProperty("legacy-wrapper")) {
-    artefactGroupId = artefactGroupId + '.legacy'
-}
-if (project.hasProperty("tunnel")) {
-    artefactGroupId = artefactGroupId + '.tunnel'
-}
-if (project.hasProperty("no-video")) {
-    artefactGroupId = artefactGroupId + '.no-video'
-}
-println("AAR artefact group id will be: " + artefactGroupId)
-
-publishing {
-    publications {
-        debug(MavenPublication) {
-            groupId artefactGroupId
-            artifactId 'linphone-sdk-android' + '-debug'
-            version gitVersion.toString().trim()
-            artifact("$buildDir/outputs/aar/linphone-sdk-android-debug.aar")
-        }
-        release(MavenPublication) {
-            groupId artefactGroupId
-            artifactId 'linphone-sdk-android'
-            version gitVersion.toString().trim()
-            artifact("$buildDir/outputs/aar/linphone-sdk-android-release.aar")
-
-            // Also upload the javadoc
-            artifact androidJavadocsJar
+afterEvaluate {
+    def debugFile = file("$buildDir/outputs/aar/linphone-sdk-android.aar")
+    tasks.named("assembleDebug").configure {
+        doLast {
+            debugFile.renameTo("$buildDir/outputs/aar/linphone-sdk-android-debug.aar")
         }
     }
-    repositories {
-        maven {
-            url "./maven_repository/"
+    tasks.named("assembleRelease").configure {
+        doLast {
+            debugFile.renameTo("$buildDir/outputs/aar/linphone-sdk-android-release.aar")
         }
     }
 }
-
-project.tasks['assemble'].dependsOn 'getGitVersion'
-project.tasks['publish'].dependsOn 'assemble'

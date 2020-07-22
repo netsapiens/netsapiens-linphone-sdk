@@ -32,14 +32,11 @@ if(NOT DEFINED CMAKE_INSTALL_MESSAGE)
 	set_property(CACHE CMAKE_INSTALL_MESSAGE PROPERTY STRINGS "ALWAYS" "LAZY" "NEVER")
 endif()
 
-set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/linphone-sdk" CACHE INTERNAL "")
-
 find_program(CCACHE_PROGRAM "ccache")
 if(CCACHE_PROGRAM)
 	set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE PATH "Compiler launcher for C source code" FORCE)
 	set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE PATH "Compiler launcher for C++ source code" FORCE)
 endif()
 mark_as_advanced(CCACHE_PROGRAM)
-
 
 include(ExternalProject)
