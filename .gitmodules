@@ -119,5 +119,5 @@
 	path = mswinrtvid
 	url = https://gitlab.linphone.org/BC/public/mswinrtvid.git
 [submodule "msandroidcamera2"]
-		path = msandroidcamera2
-		url = https://gitlab.linphone.org/BC/public/msandroidcamera2.git
+	path = msandroidcamera2
+	url = https://gitlab.linphone.org/BC/public/msandroidcamera2.git
