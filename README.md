@@ -26,7 +26,7 @@ export ANDROID_NDK_HOME="/Users/chrisaaker/Library/Android/sdk/ndk/19.2.5345600"
 
 mkdir build && cd build
 
-cmake .. -DLINPHONESDK_PLATFORM=Android -DENABLE_VIDEO=0 -DENABLE_LIME=0 -DENABLE_LIME_X3DH=0 -DENABLE_G729=1
+cmake .. -DLINPHONESDK_PLATFORM=Android -DENABLE_VIDEO=0 -DENABLE_LIME=0 -DENABLE_LIME_X3DH=0 -DENABLE_G729=1 -DLINPHONESDK_ANDROID_ARCHS=armv7,arm64,x86,x86_64
 
 cmake --build . --parallel 3
 
